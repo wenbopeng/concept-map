@@ -38,8 +38,8 @@
   /* 主题相关的边/标签颜色（节点卡片为彩色渐变，日夜通用，无需切换）。
      页面其余 UI 颜色走 CSS 变量，见 injectCSS。 */
   var THEMES = {
-    dark:  { edgeLine: "#8A94A6", edgeText: "#dfe6f2", edgeLabelBg: "#0d1526", crossText: "#ffd0ec" },
-    light: { edgeLine: "#7a8499", edgeText: "#33405a", edgeLabelBg: "#ffffff", crossText: "#c2185b" }
+    dark:  { edgeLine: "#8A94A6", edgeText: "#dfe6f2", edgeLabelBg: "#0d1526", crossText: "#ffd0ec", hl: "#FFE57F" },
+    light: { edgeLine: "#7a8499", edgeText: "#33405a", edgeLabelBg: "#ffffff", crossText: "#c2185b", hl: "#2F6BD8" }
   };
 
   function loadTheme() {
@@ -273,7 +273,7 @@
 
       { selector: "node:selected, node.cm-hl", style: {
           "border-width": 5,
-          "border-color": "#FFE57F"
+          "border-color": t.hl
       }},
       { selector: "node.cm-dim", style: { "opacity": 0.25 } },
 
@@ -308,8 +308,8 @@
       }},
 
       { selector: "edge.cm-hl", style: {
-          "line-color": "#FFE57F",
-          "target-arrow-color": "#FFE57F",
+          "line-color": t.hl,
+          "target-arrow-color": t.hl,
           "width": 3.6,
           "line-opacity": 1,
           "z-index": 20
@@ -401,6 +401,9 @@
     var themeBtn = dom.ctrl.querySelector("[data-act='theme']");
     function applyEdgeColors(t) {
       cy.style()
+        .selector("node:selected, node.cm-hl").style({
+          "border-color": t.hl
+        })
         .selector("edge").style({
           "line-color": t.edgeLine, "target-arrow-color": t.edgeLine,
           "color": t.edgeText, "text-background-color": t.edgeLabelBg
@@ -409,7 +412,7 @@
           "line-color": CROSS_COLOR, "target-arrow-color": CROSS_COLOR, "color": t.crossText
         })
         .selector("edge.cm-hl").style({
-          "line-color": "#FFE57F", "target-arrow-color": "#FFE57F"
+          "line-color": t.hl, "target-arrow-color": t.hl
         })
         .update();
     }
@@ -426,7 +429,9 @@
     }
     setTheme(theme);
 
-    runLayout(cy, hasFcose);
+    // 固定随机种子：默认常量，可在 JSON 的 meta.seed 中覆盖
+    var seed = (meta.seed != null ? meta.seed : 20240613) >>> 0;
+    runLayout(cy, hasFcose, seed);
     bindInteractions(cy);
     bindControls(cy, dom.ctrl, function () { setTheme(theme === "dark" ? "light" : "dark"); });
 
@@ -439,7 +444,19 @@
   /* ---------------------------------------------------------------------------
    * 8. 布局
    * ------------------------------------------------------------------------- */
-  function runLayout(cy, hasFcose) {
+  // 确定性 PRNG（mulberry32）。布局期间临时替换 Math.random，
+  // 使 fcose/cose 的随机初始化可复现 —— 同一份数据每次刷新得到相同布局。
+  function makeRng(seed) {
+    var s = seed >>> 0;
+    return function () {
+      s = (s + 0x6D2B79F5) | 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function runLayout(cy, hasFcose, seed) {
     var opts = hasFcose
       ? { name: "fcose", quality: "proof", animate: true, animationDuration: 600,
           randomize: true, padding: 60, nodeSeparation: 140,
@@ -448,8 +465,14 @@
       : { name: "cose", animate: true, animationDuration: 600, padding: 60,
           nodeRepulsion: 12000, idealEdgeLength: 150, fit: true };
     var layout = cy.layout(opts);
-    layout.run();
     layout.on("layoutstop", function () { cy.animate({ fit: { padding: 60 } }, { duration: 300 }); });
+
+    // 布局计算在 run() 内同步完成（随机数也在此期间消费），
+    // 用 try/finally 把 Math.random 的替换严格限制在这段窗口内。
+    var origRandom = Math.random;
+    Math.random = makeRng(seed >>> 0);
+    try { layout.run(); }
+    finally { Math.random = origRandom; }
   }
 
   /* ---------------------------------------------------------------------------

@@ -17,29 +17,30 @@
    *    AI 输出的 node.data.type 命中下表的某个 key 即采用对应配色，
    *    未命中则回退到 "default"。
    * ------------------------------------------------------------------------- */
-  // 单色平涂、淡雅配色：浅色填充 + 深色文字（保证可读性），描边用饱和色标识类别
+  // Flexoki 配色（单色平涂）：bg=accent-100 浅底，border=accent-600 标识色，text=accent-900 深字。
+  // key 为焦点，用 red-600 实心 + paper 文字突出。日夜共用一套。
   var PALETTE = {
-    key:     { bg: "#F1CFC4", border: "#C77B62", text: "#5E3526" },
-    blue:    { bg: "#D2DDEC", border: "#6D89B0", text: "#34465E" },
-    green:   { bg: "#CFE3D8", border: "#6FA088", text: "#2E4C3D" },
-    purple:  { bg: "#DDD4E8", border: "#8C7AA6", text: "#463A57" },
-    orange:  { bg: "#EEDAC2", border: "#C2945F", text: "#5E4327" },
-    red:     { bg: "#EDD2CF", border: "#C2756F", text: "#5E302C" },
-    pink:    { bg: "#EBD7E2", border: "#BE87A4", text: "#5A3A4B" },
-    teal:    { bg: "#CFE2E2", border: "#6FA0A0", text: "#2E4C4C" },
-    yellow:  { bg: "#EDE6C4", border: "#C7B56B", text: "#4D441E" },
-    gray:    { bg: "#DCE0E5", border: "#8A95A1", text: "#3A434D" },
-    default: { bg: "#D7DCE8", border: "#7C8AA6", text: "#353F52" }
+    key:     { bg: "#AF3029", border: "#942822", text: "#FFFCF0" },
+    blue:    { bg: "#C6DDE8", border: "#205EA6", text: "#12253B" },
+    green:   { bg: "#DDE2B2", border: "#66800B", text: "#252D09" },
+    purple:  { bg: "#E2D9E9", border: "#5E409D", text: "#261C39" },
+    orange:  { bg: "#FED3AF", border: "#BC5215", text: "#40200D" },
+    red:     { bg: "#FFCABB", border: "#AF3029", text: "#3E1715" },
+    pink:    { bg: "#FCCFDA", border: "#A02F6F", text: "#39172B" },
+    teal:    { bg: "#BFE8D9", border: "#24837B", text: "#122F2C" },
+    yellow:  { bg: "#F6E2A0", border: "#AD8301", text: "#3A2D04" },
+    gray:    { bg: "#E6E4D9", border: "#878580", text: "#282726" },
+    default: { bg: "#DAD8CE", border: "#6F6E69", text: "#282726" }
   };
   function pal(type) { return PALETTE[type] || PALETTE.default; }
 
-  var CROSS_COLOR = "#FF1FA2";        // 交叉连接线（强调色，日夜通用）
+  var CROSS_COLOR = "#B74583";        // 交叉连接线（Flexoki magenta-500，日夜通用）
 
-  /* 主题相关的边/标签颜色（节点卡片为彩色渐变，日夜通用，无需切换）。
+  /* 主题相关的边/标签颜色（Flexoki base 中性色系；节点卡片配色日夜共用，见 PALETTE）。
      页面其余 UI 颜色走 CSS 变量，见 injectCSS。 */
   var THEMES = {
-    dark:  { edgeLine: "#8A94A6", edgeText: "#dfe6f2", edgeLabelBg: "#0d1526", crossText: "#ffd0ec", hl: "#FFE57F" },
-    light: { edgeLine: "#7a8499", edgeText: "#33405a", edgeLabelBg: "#ffffff", crossText: "#c2185b", hl: "#2F6BD8" }
+    dark:  { edgeLine: "#878580", edgeText: "#CECDC3", edgeLabelBg: "#1C1B1A", crossText: "#F9B9CF", hl: "#DFB431" },
+    light: { edgeLine: "#6F6E69", edgeText: "#403E3C", edgeLabelBg: "#FFFCF0", crossText: "#A02F6F", hl: "#205EA6" }
   };
 
   function loadTheme() {
@@ -82,7 +83,9 @@
     "https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.min.js",
     "https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.min.js",
     "https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/cytoscape-fcose.min.js",
-    "https://cdn.jsdelivr.net/npm/cytoscape-node-html-label@1.2.2/dist/cytoscape-node-html-label.min.js"
+    "https://cdn.jsdelivr.net/npm/cytoscape-node-html-label@1.2.2/dist/cytoscape-node-html-label.min.js",
+    "https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js",
+    "https://cdn.jsdelivr.net/npm/cytoscape-svg@0.4.0/cytoscape-svg.js"
   ];
 
   function loadScript(src) {
@@ -111,21 +114,21 @@
       "html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;",
       "  font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',Segoe UI,sans-serif;}",
 
-      /* 主题变量：夜间 */
+      /* 主题变量：夜间（Flexoki base 暗色） */
       "#cm-stage.cm-dark{",
-      "  --cm-bg:radial-gradient(circle at 20% 15%,#1b2a4a 0%,#0d1526 55%,#070b14 100%);",
-      "  --cm-fg:#ffffff; --cm-fg-soft:#cfd8e6;",
-      "  --cm-panel:rgba(20,28,48,.72); --cm-panel-solid:rgba(20,28,48,.8); --cm-panel-hover:rgba(60,90,160,.9);",
-      "  --cm-border:rgba(255,255,255,.12); --cm-edge:#8A94A6;",
-      "  --cm-tip-bg:rgba(10,16,30,.95); --cm-tip-fg:#eaf0fb;",
+      "  --cm-bg:radial-gradient(circle at 20% 15%,#282726 0%,#1C1B1A 55%,#100F0F 100%);",
+      "  --cm-fg:#CECDC3; --cm-fg-soft:#878580;",
+      "  --cm-panel:rgba(40,39,38,.78); --cm-panel-solid:rgba(40,39,38,.88); --cm-panel-hover:rgba(87,86,83,.92);",
+      "  --cm-border:rgba(206,205,195,.14); --cm-edge:#878580;",
+      "  --cm-tip-bg:rgba(28,27,26,.96); --cm-tip-fg:#E6E4D9;",
       "  --cm-title-shadow:0 2px 12px rgba(0,0,0,.6);}",
-      /* 主题变量：日间 */
+      /* 主题变量：日间（Flexoki paper / base 亮色） */
       "#cm-stage.cm-light{",
-      "  --cm-bg:radial-gradient(circle at 20% 15%,#eef3fb 0%,#dde6f3 55%,#cbd6ea 100%);",
-      "  --cm-fg:#1c2536; --cm-fg-soft:#44506a;",
-      "  --cm-panel:rgba(255,255,255,.78); --cm-panel-solid:rgba(255,255,255,.86); --cm-panel-hover:rgba(120,160,235,.9);",
-      "  --cm-border:rgba(20,40,80,.14); --cm-edge:#7a8499;",
-      "  --cm-tip-bg:rgba(255,255,255,.97); --cm-tip-fg:#25304a;",
+      "  --cm-bg:radial-gradient(circle at 20% 15%,#FFFCF0 0%,#F2F0E5 60%,#E6E4D9 100%);",
+      "  --cm-fg:#100F0F; --cm-fg-soft:#6F6E69;",
+      "  --cm-panel:rgba(242,240,229,.82); --cm-panel-solid:rgba(242,240,229,.92); --cm-panel-hover:rgba(183,181,172,.85);",
+      "  --cm-border:rgba(16,15,15,.14); --cm-edge:#6F6E69;",
+      "  --cm-tip-bg:rgba(255,252,240,.97); --cm-tip-fg:#282726;",
       "  --cm-title-shadow:0 1px 6px rgba(255,255,255,.55);}",
 
       "#cm-stage{position:fixed;inset:0;background:var(--cm-bg);transition:background .35s ease;}",
@@ -153,6 +156,17 @@
       "  background:var(--cm-panel-solid);color:var(--cm-fg);font-size:18px;line-height:1;",
       "  border:1px solid var(--cm-border);transition:.15s;backdrop-filter:blur(8px);}",
       "#cm-ctrl button:hover{background:var(--cm-panel-hover);transform:translateY(-1px);}",
+
+      /* 导出菜单（点“导出”按钮弹出，选择 PNG / SVG） */
+      "#cm-export-menu{position:fixed;bottom:66px;right:18px;z-index:11;display:none;",
+      "  flex-direction:column;gap:6px;background:var(--cm-panel-solid);backdrop-filter:blur(8px);",
+      "  border:1px solid var(--cm-border);border-radius:10px;padding:8px;",
+      "  box-shadow:0 8px 28px rgba(0,0,0,.35);}",
+      "#cm-export-menu.open{display:flex;}",
+      "#cm-export-menu button{min-width:128px;height:34px;border-radius:8px;cursor:pointer;",
+      "  background:transparent;color:var(--cm-fg);font-size:13px;line-height:1;",
+      "  border:1px solid var(--cm-border);transition:.15s;padding:0 12px;text-align:left;}",
+      "#cm-export-menu button:hover{background:var(--cm-panel-hover);}",
 
       /* HTML 节点卡片 */
       ".cm-node{box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;",
@@ -222,11 +236,18 @@
       "<button data-act='theme' title='切换日间/夜间'>🌙</button>" +
       "<button data-act='in'  title='放大'>＋</button>" +
       "<button data-act='out' title='缩小'>－</button>" +
-      "<button data-act='fit' title='适应屏幕'>⤢</button>";
+      "<button data-act='fit' title='适应屏幕'>⤢</button>" +
+      "<button data-act='export' title='导出图片'>⬇</button>";
     stage.appendChild(ctrl);
 
+    var menu = document.createElement("div"); menu.id = "cm-export-menu";
+    menu.innerHTML =
+      "<button data-fmt='png'>导出 PNG</button>" +
+      "<button data-fmt='svg'>导出 SVG</button>";
+    stage.appendChild(menu);
+
     document.body.appendChild(stage);
-    return { cyEl: cy, tip: tip, ctrl: ctrl };
+    return { cyEl: cy, tip: tip, ctrl: ctrl, menu: menu };
   }
 
   function esc(s) {
@@ -345,6 +366,11 @@
       if (window.cytoscapeFcose) { cytoscape.use(window.cytoscapeFcose); hasFcose = true; }
     } catch (e) { /* 已注册或不可用 */ hasFcose = !!window.cytoscapeFcose; }
 
+    // 注册 cytoscape-svg（矢量导出，若可用）
+    try {
+      if (window.cytoscapeSvg) { cytoscape.use(window.cytoscapeSvg); }
+    } catch (e) { /* 已注册或不可用 */ }
+
     // 预先实测每个节点的卡片尺寸（文字换行后），写入 data._w / _h
     (data.nodes || []).forEach(function (n) {
       if (n && n.data) {
@@ -434,6 +460,7 @@
     runLayout(cy, hasFcose, seed);
     bindInteractions(cy);
     bindControls(cy, dom.ctrl, function () { setTheme(theme === "dark" ? "light" : "dark"); });
+    bindExport(stage, dom.ctrl, dom.menu, cy, meta, function () { return theme; });
 
     window.addEventListener("resize", function () { cy.resize(); });
     // 暴露给控制台调试
@@ -522,10 +549,188 @@
       if (!act) return;
       if (act === "theme") { if (onTheme) onTheme(); return; }
       if (act === "fit") { cy.animate({ fit: { padding: 60 } }, { duration: 300 }); return; }
+      if (act !== "in" && act !== "out") return;   // export 等按钮由各自处理器接管
       var factor = act === "in" ? 1.25 : 0.8;
       var z = cy.zoom() * factor;
       cy.animate({ zoom: { level: z, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } } }, { duration: 180 });
     });
+  }
+
+  /* ---------------------------------------------------------------------------
+   * 11. 导出图片：把整个舞台（渐变背景 + 标题 + 图例 + 节点卡片 + 连线）
+   *     用 html-to-image 截图为 PNG / SVG。节点文字是 HTML 覆盖层，
+   *     cytoscape 自带的 cy.png() 无法捕获，故走 DOM 截图方案。
+   * ------------------------------------------------------------------------- */
+  function bindExport(stage, ctrl, menu, cy, meta, getTheme) {
+    var btn = ctrl.querySelector("[data-act='export']");
+    if (!btn || !menu) return;
+
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();            // 不冒泡到 #cm-ctrl 的缩放处理器
+      menu.classList.toggle("open");
+    });
+    menu.addEventListener("click", function (e) {
+      var fmt = e.target && e.target.getAttribute("data-fmt");
+      if (!fmt) return;
+      menu.classList.remove("open");
+      exportImage(stage, cy, meta, getTheme(), fmt);
+    });
+    // 点击别处关闭菜单
+    document.addEventListener("click", function () { menu.classList.remove("open"); });
+  }
+
+  function exportImage(stage, cy, meta, theme, format) {
+    // SVG 走矢量路线（cytoscape-svg）：连线 / 边标签 / 节点底框都输出为真矢量，
+    // 节点文字用 <foreignObject> 矢量卡片叠加——文件小、无限缩放都清晰，
+    // 不做任何栅格化。扩展不可用时才回退到位图方案。
+    if (format === "svg" && typeof cy.svg === "function") {
+      exportSvgVector(stage, cy, meta, theme);
+      return;
+    }
+    exportRaster(stage, cy, meta, theme, format);
+  }
+
+  function exportFilename(meta) {
+    return ((meta && meta.title ? meta.title : "concept-map")
+      .replace(/[\\/:*?"<>|]/g, "_").slice(0, 80) || "concept-map");
+  }
+
+  /* PNG（以及无 cytoscape-svg 时的 SVG 回退）：用 html-to-image 把整个舞台
+     截成位图。连线 / 边标签是 canvas，临时拉高渲染分辨率使其更清晰。 */
+  function exportRaster(stage, cy, meta, theme, format) {
+    if (!window.htmlToImage) {
+      alert("导出组件未加载，请检查网络连接（需要访问 cdn.jsdelivr.net）。");
+      return;
+    }
+    var savedZoom = cy.zoom();
+    var savedPan = { x: cy.pan().x, y: cy.pan().y };
+
+    var EXPORT_PR = 3;
+    var renderer = cy.renderer();
+    var prevForced = (renderer && "forcedPixelRatio" in renderer) ? renderer.forcedPixelRatio : undefined;
+    if (renderer) {
+      try { renderer.forcedPixelRatio = EXPORT_PR; cy.resize(); } catch (e) { /* 退回默认分辨率 */ }
+    }
+
+    cy.fit(60);
+
+    var opts = {
+      width: stage.clientWidth,
+      height: stage.clientHeight,
+      pixelRatio: format === "png" ? 2 : 1,
+      filter: function (node) {
+        if (!node || !node.id) return true;
+        return node.id !== "cm-ctrl" && node.id !== "cm-export-menu" && node.id !== "cm-tip";
+      }
+    };
+    var toImage = format === "svg" ? window.htmlToImage.toSvg : window.htmlToImage.toPng;
+    var restore = function () {
+      if (renderer) { try { renderer.forcedPixelRatio = prevForced; cy.resize(); } catch (e) {} }
+      cy.zoom(savedZoom); cy.pan(savedPan);
+    };
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        toImage(stage, opts).then(function (dataUrl) {
+          restore();
+          var a = document.createElement("a");
+          a.download = exportFilename(meta) + "." + format;
+          a.href = dataUrl;
+          a.click();
+        }).catch(function (err) {
+          restore();
+          console.error("[conceptmap] 导出失败", err);
+          alert("导出失败：" + (err && err.message ? err.message : err));
+        });
+      });
+    });
+  }
+
+  /* 矢量 SVG：cy.svg() 把连线、边标签、节点底框输出为真矢量；节点上的
+     富文本（标题 + 描述）是 HTML 覆盖层，cy.svg 捕获不到，这里按每个节点
+     的屏幕坐标用 <foreignObject> 卡片叠加。坐标取 renderedPosition，与
+     cy.svg(full:false) 的视口坐标系一致。 */
+  function exportSvgVector(stage, cy, meta, theme) {
+    var savedZoom = cy.zoom();
+    var savedPan = { x: cy.pan().x, y: cy.pan().y };
+    cy.fit(60);
+
+    function restore() { cy.zoom(savedZoom); cy.pan(savedPan); }
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        try {
+          var bg = theme === "light" ? "#FFFCF0" : "#1C1B1A";
+          var svgStr = cy.svg({ full: false, scale: 1, bg: bg });
+
+          // cytoscape-svg 内部会把输出再乘以 devicePixelRatio（见其 bufferCanvasImage），
+          // 因此 SVG 坐标系 = S × 屏幕坐标，S = scale × pixelRatio。直接读它实际写入的
+          // width 反推 S，最稳妥（不依赖内部实现细节），再用 S 补偿叠加层的坐标与缩放。
+          var S = 1;
+          var mW = svgStr.match(/<svg[^>]*\bwidth="([\d.]+)"/i);
+          if (mW) { var sw = parseFloat(mW[1]); if (sw > 0 && cy.width() > 0) S = sw / cy.width(); }
+
+          // 仅当 HTML 卡片在用时才叠加文字（否则 cy.svg 已含原生文字标签）
+          var sample = stage.querySelector(".cm-node");
+          if (sample) {
+            var zoom = cy.zoom();
+            var FONT = "-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',Segoe UI,sans-serif";
+            var color = getComputedStyle(sample).color || "#282726";
+            var foStr = "";
+            cy.nodes().forEach(function (node) {
+              var d = node.data();
+              var isKey = d.type === "key";
+              var mw = d._w || (isKey ? NODE_W.key : NODE_W.other);
+              var mh = d._h || (isKey ? NODE_MIN_H.key : NODE_MIN_H.other);
+              var rp = node.renderedPosition();
+              var rw = node.renderedWidth(), rh = node.renderedHeight();
+              // 卡片底框在 cy.svg 里位于 S×屏幕坐标处、尺寸为 S×屏幕尺寸；
+              // 卡片按模型尺寸 mw×mh 排版，再 scale(zoom×S) 即可严丝合缝贴合。
+              foStr += svgCardFO(
+                d,
+                (rp.x - rw / 2) * S, (rp.y - rh / 2) * S,
+                rw * S, rh * S,
+                mw, mh, zoom * S, color, FONT, isKey
+              );
+            });
+            svgStr = svgStr.replace(/<\/svg>\s*$/i, foStr + "</svg>");
+          }
+
+          restore();
+          var blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.download = exportFilename(meta) + ".svg";
+          a.href = url;
+          a.click();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        } catch (err) {
+          restore();
+          console.error("[conceptmap] SVG 矢量导出失败，回退位图方案", err);
+          exportRaster(stage, cy, meta, theme, "svg");
+        }
+      });
+    });
+  }
+
+  // 生成一个节点的 <foreignObject> 矢量卡片（标题 + 描述）。卡片按模型尺寸
+  // (mw×mh) 排版，再用 transform:scale(sc) 缩放到目标尺寸 (fw×fh)，与
+  // cy.svg 的几何对齐。样式全部内联，导出的 SVG 自包含、无需外部 CSS。
+  function svgCardFO(d, x, y, fw, fh, mw, mh, sc, color, font, isKey) {
+    var tFont = isKey ? 16 : 14;
+    var dFont = isKey ? 11 : 10.5;
+    var wrap = "box-sizing:border-box;width:" + mw + "px;height:" + mh + "px;" +
+      "transform:scale(" + sc + ");transform-origin:top left;" +
+      "display:flex;flex-direction:column;align-items:center;justify-content:center;" +
+      "text-align:center;padding:8px 12px;font-family:" + font + ";color:" + color + ";" +
+      "overflow-wrap:break-word;word-break:break-word;";
+    var title = "<div style=\"font-weight:700;line-height:1.3;font-size:" + tFont + "px\">" + esc(d.label || "") + "</div>";
+    var desc = d.desc
+      ? "<div style=\"font-weight:400;opacity:.9;line-height:1.35;margin-top:4px;font-size:" + dFont + "px\">" + esc(d.desc) + "</div>"
+      : "";
+    return "<foreignObject x=\"" + x + "\" y=\"" + y + "\" width=\"" + fw + "\" height=\"" + fh + "\">" +
+      "<div xmlns=\"http://www.w3.org/1999/xhtml\" style=\"" + wrap + "\">" + title + desc + "</div>" +
+      "</foreignObject>";
   }
 
   function showError(msg) {

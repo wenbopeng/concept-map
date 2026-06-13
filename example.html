@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>概念地图示例</title>
+
+<!-- ① AI 输出的 JSON 数据（粘到这里） -->
+<script type="application/json" id="conceptmap-data">
+{
+  "meta": {
+    "title": "AI故事尚未完结",
+    "subtitle": "断裂世界中人类与人工智能的叙事困境"
+  },
+  "nodes": [
+    { "data": { "id": "core", "label": "叙事困境", "desc": "在现实断裂中无法继续撰写传统AI故事", "type": "key" } },
+    { "data": { "id": "f1", "label": "理想世界模型", "desc": "控制论者设想的信息百分之百准确传输的系统", "type": "blue" } },
+    { "data": { "id": "f1_1", "label": "刘慈欣人列计算机", "desc": "《三体》中数千万人举旗模拟0和1的理想计算", "type": "blue" } },
+    { "data": { "id": "f1_2", "label": "技术决定论", "desc": "坚信数学模型和技术方案能完美解决现实危机", "type": "blue" } },
+    { "data": { "id": "f2", "label": "非线性现实", "desc": "充满复杂性、不可预测性与人类主观性的真实世界", "type": "green" } },
+    { "data": { "id": "f2_1", "label": "系统失灵体验", "desc": "隔离、流调等信息采集系统流于形式且冲突混乱", "type": "green" } },
+    { "data": { "id": "f2_2", "label": "排斥技术外问题", "desc": "技术进步刻意忽略无法被数学模型量化的主观诉求", "type": "green" } },
+    { "data": { "id": "f3", "label": "机器世界异化", "desc": "追求绝对精准而将人类组件化并施加精神攻击", "type": "purple" } },
+    { "data": { "id": "f3_1", "label": "单调机械循环", "desc": "短促重复的旋律或规则对人类听觉与精神的折磨", "type": "purple" } },
+    { "data": { "id": "f3_2", "label": "组件化人类", "desc": "为达系统精准而将人异化为无误差的工具部件", "type": "purple" } },
+    { "data": { "id": "f4", "label": "科幻叙事重构", "desc": "超越传统“逃离机器”套路，直面日常的写作省思", "type": "orange" } },
+    { "data": { "id": "f4_1", "label": "传统逃离范式", "desc": "反乌托邦流派中逃向自然并重启文明的循环套路", "type": "orange" } },
+    { "data": { "id": "f4_2", "label": "人类主体性", "desc": "带着困惑、焦虑和软弱在凝视深渊时坚持书写", "type": "orange" } },
+    { "data": { "id": "s1", "label": "集体断裂感", "desc": "疫情等现实危机导致科幻作家丧失既有叙事信念", "type": "red" } },
+    { "data": { "id": "s2", "label": "Eliza游戏", "desc": "人类充当皮囊、机器提供文本的赛博格心理咨询", "type": "teal" } }
+  ],
+  "edges": [
+    { "data": { "source": "core", "target": "s1", "label": "根源于", "cross": false } },
+    { "data": { "source": "s1", "target": "s2", "label": "借由……触发", "cross": false } },
+    { "data": { "source": "core", "target": "f1", "label": "解构了", "cross": false } },
+    { "data": { "source": "f1", "target": "f1_1", "label": "典型表现为", "cross": false } },
+    { "data": { "source": "f1", "target": "f1_2", "label": "延伸出", "cross": false } },
+    { "data": { "source": "core", "target": "f2", "label": "直面", "cross": false } },
+    { "data": { "source": "f2", "target": "f2_1", "label": "具体例证为", "cross": false } },
+    { "data": { "source": "f2", "target": "f2_2", "label": "导致", "cross": false } },
+    { "data": { "source": "core", "target": "f3", "label": "反思", "cross": false } },
+    { "data": { "source": "f3", "target": "f3_1", "label": "表现为", "cross": false } },
+    { "data": { "source": "f3", "target": "f3_2", "label": "终极手段为", "cross": false } },
+    { "data": { "source": "core", "target": "f4", "label": "指向", "cross": false } },
+    { "data": { "source": "f4", "target": "f4_1", "label": "反思", "cross": false } },
+    { "data": { "source": "f4", "target": "f4_2", "label": "重构为", "cross": false } },
+    { "data": { "source": "s2", "target": "f3_2", "label": "预言了", "cross": true } },
+    { "data": { "source": "f2_2", "target": "f1_2", "label": "揭示其盲区", "cross": true } },
+    { "data": { "source": "f3_2", "target": "f4_1", "label": "引发引发", "cross": true } },
+    { "data": { "source": "f4_2", "target": "s1", "label": "回应", "cross": true } }
+  ]
+}
+</script>
+
+<!-- ② 加一行渲染器，浏览器打开即渲染 -->
+<script src="conceptmap-init.js"></script>

@@ -17,19 +17,19 @@
    *    AI 输出的 node.data.type 命中下表的某个 key 即采用对应配色，
    *    未命中则回退到 "default"。
    * ------------------------------------------------------------------------- */
-  // 单色平涂、低饱和度配色（bg=填充色，border=描边，text=文字色）
+  // 单色平涂、淡雅配色：浅色填充 + 深色文字（保证可读性），描边用饱和色标识类别
   var PALETTE = {
-    key:     { bg: "#C77B62", border: "#A85F47", text: "#ffffff" },
-    blue:    { bg: "#6D89B0", border: "#51698C", text: "#ffffff" },
-    green:   { bg: "#6FA088", border: "#517A66", text: "#ffffff" },
-    purple:  { bg: "#8C7AA6", border: "#6E5C88", text: "#ffffff" },
-    orange:  { bg: "#C2945F", border: "#9E7544", text: "#ffffff" },
-    red:     { bg: "#C2756F", border: "#9E544F", text: "#ffffff" },
-    pink:    { bg: "#BE87A4", border: "#9A6582", text: "#ffffff" },
-    teal:    { bg: "#6FA0A0", border: "#517E7E", text: "#ffffff" },
-    yellow:  { bg: "#C7B56B", border: "#9E8D45", text: "#3a2c00" },
-    gray:    { bg: "#8A95A1", border: "#6B7682", text: "#ffffff" },
-    default: { bg: "#7C8AA6", border: "#5E6B86", text: "#ffffff" }
+    key:     { bg: "#F1CFC4", border: "#C77B62", text: "#5E3526" },
+    blue:    { bg: "#D2DDEC", border: "#6D89B0", text: "#34465E" },
+    green:   { bg: "#CFE3D8", border: "#6FA088", text: "#2E4C3D" },
+    purple:  { bg: "#DDD4E8", border: "#8C7AA6", text: "#463A57" },
+    orange:  { bg: "#EEDAC2", border: "#C2945F", text: "#5E4327" },
+    red:     { bg: "#EDD2CF", border: "#C2756F", text: "#5E302C" },
+    pink:    { bg: "#EBD7E2", border: "#BE87A4", text: "#5A3A4B" },
+    teal:    { bg: "#CFE2E2", border: "#6FA0A0", text: "#2E4C4C" },
+    yellow:  { bg: "#EDE6C4", border: "#C7B56B", text: "#4D441E" },
+    gray:    { bg: "#DCE0E5", border: "#8A95A1", text: "#3A434D" },
+    default: { bg: "#D7DCE8", border: "#7C8AA6", text: "#353F52" }
   };
   function pal(type) { return PALETTE[type] || PALETTE.default; }
 
@@ -208,8 +208,8 @@
 
     var legend = document.createElement("div"); legend.id = "cm-legend";
     legend.innerHTML =
-      "<div class='row'><span class='swatch' style='background:" + PALETTE.key.bg + "'></span>核心概念</div>" +
-      "<div class='row'><span class='swatch' style='background:" + PALETTE.blue.bg + "'></span>分支概念</div>" +
+      "<div class='row'><span class='swatch' style='background:" + PALETTE.key.bg + ";border:1.5px solid " + PALETTE.key.border + "'></span>核心概念</div>" +
+      "<div class='row'><span class='swatch' style='background:" + PALETTE.blue.bg + ";border:1.5px solid " + PALETTE.blue.border + "'></span>分支概念</div>" +
       "<div class='row'><span class='solid'></span>连接（关系）</div>" +
       "<div class='row'><span class='dash'></span>交叉连接（长程）</div>";
     stage.appendChild(legend);

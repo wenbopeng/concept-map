@@ -141,14 +141,6 @@
       "#cm-title small{display:block;font-size:12px;font-weight:400;opacity:.7;margin-top:4px;}",
 
       /* 图例 */
-      "#cm-legend{position:fixed;top:18px;right:18px;z-index:10;",
-      "  background:var(--cm-panel);backdrop-filter:blur(8px);",
-      "  border:1px solid var(--cm-border);border-radius:12px;padding:10px 14px;",
-      "  color:var(--cm-fg-soft);font-size:12px;line-height:1.9;max-width:220px;}",
-      "#cm-legend .row{display:flex;align-items:center;gap:8px;}",
-      "#cm-legend .swatch{width:14px;height:14px;border-radius:4px;flex:0 0 auto;}",
-      "#cm-legend .dash{width:22px;height:0;border-top:2px dashed " + CROSS_COLOR + ";}",
-      "#cm-legend .solid{width:22px;height:0;border-top:2px solid var(--cm-edge);}",
 
       /* 控制按钮 */
       "#cm-ctrl{position:fixed;bottom:18px;right:18px;z-index:10;display:flex;gap:8px;}",
@@ -219,14 +211,6 @@
     title.innerHTML = (meta && meta.title ? esc(meta.title) : "概念地图") +
       (meta && meta.subtitle ? "<small>" + esc(meta.subtitle) + "</small>" : "");
     stage.appendChild(title);
-
-    var legend = document.createElement("div"); legend.id = "cm-legend";
-    legend.innerHTML =
-      "<div class='row'><span class='swatch' style='background:" + PALETTE.key.bg + ";border:1.5px solid " + PALETTE.key.border + "'></span>核心概念</div>" +
-      "<div class='row'><span class='swatch' style='background:" + PALETTE.blue.bg + ";border:1.5px solid " + PALETTE.blue.border + "'></span>分支概念</div>" +
-      "<div class='row'><span class='solid'></span>连接（关系）</div>" +
-      "<div class='row'><span class='dash'></span>交叉连接（长程）</div>";
-    stage.appendChild(legend);
 
     var tip = document.createElement("div"); tip.id = "cm-tip";
     stage.appendChild(tip);
@@ -492,7 +476,10 @@
       : { name: "cose", animate: true, animationDuration: 600, padding: 60,
           nodeRepulsion: 12000, idealEdgeLength: 150, fit: true };
     var layout = cy.layout(opts);
-    layout.on("layoutstop", function () { cy.animate({ fit: { padding: 60 } }, { duration: 300 }); });
+    layout.on("layoutstop", function () {
+      rerouteBlockedEdges(cy);
+      cy.animate({ fit: { padding: 60 } }, { duration: 300 });
+    });
 
     // 布局计算在 run() 内同步完成（随机数也在此期间消费），
     // 用 try/finally 把 Math.random 的替换严格限制在这段窗口内。
@@ -503,7 +490,76 @@
   }
 
   /* ---------------------------------------------------------------------------
-   * 9. 交互：点击节点高亮其邻居与相连边，点空白还原
+   * 9. 边绕行路由：检测穿越其他节点的边，自动弯曲绕开遮挡
+   * ------------------------------------------------------------------------- */
+  // Liang-Barsky 算法：线段与轴对齐矩形相交检测
+  function lineSegmentIntersectsRect(p1, p2, rect) {
+    var dx = p2.x - p1.x, dy = p2.y - p1.y;
+    var t0 = 0, t1 = 1;
+    function clip(p, q) {
+      if (Math.abs(p) < 1e-9) return q >= 0;
+      var r = q / p;
+      if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+      else        { if (r < t0) return false; if (r < t1) t1 = r; }
+      return true;
+    }
+    return clip(-dx, p1.x - rect.x1) && clip(dx, rect.x2 - p1.x) &&
+           clip(-dy, p1.y - rect.y1) && clip(dy, rect.y2 - p1.y) &&
+           t0 < t1;
+  }
+
+  function rerouteBlockedEdges(cy) {
+    var CLEAR = 28;    // 绕行时与节点边框的额外间距（模型坐标 px）
+    var MIN_SHIFT = 8; // 偏移量低于此值时不更改样式
+
+    cy.edges().forEach(function (edge) {
+      if (edge.source().id() === edge.target().id()) return; // 跳过自环
+
+      var sp = edge.source().position();
+      var tp = edge.target().position();
+      var dx = tp.x - sp.x, dy = tp.y - sp.y;
+      var len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1) return;
+
+      var srcId = edge.source().id(), tgtId = edge.target().id();
+      var totalOffset = 0;
+
+      cy.nodes().forEach(function (node) {
+        if (node.id() === srcId || node.id() === tgtId) return;
+
+        var bb = node.boundingBox();
+        var padBB = { x1: bb.x1 - CLEAR, y1: bb.y1 - CLEAR,
+                      x2: bb.x2 + CLEAR, y2: bb.y2 + CLEAR };
+        if (!lineSegmentIntersectsRect(sp, tp, padBB)) return;
+
+        // 节点中心到边线的有符号垂直距离（屏幕坐标中 cross>0 表示节点在边方向右侧）
+        var np = node.position();
+        var cross = dx * (np.y - sp.y) - dy * (np.x - sp.x);
+        var signedDist = cross / len;
+        var halfSize = Math.max(node.width(), node.height()) / 2 + CLEAR;
+        var shortage = halfSize - Math.abs(signedDist);
+        if (shortage <= 0) return;
+
+        // 节点在右侧(cross>0) → 往左推(负偏移)；在左侧 → 往右推(正偏移)
+        totalOffset += -Math.sign(cross) * shortage * 1.6;
+      });
+
+      if (Math.abs(totalOffset) >= MIN_SHIFT) {
+        edge.style({
+          "curve-style": "unbundled-bezier",
+          "control-point-weights": 0.5,
+          "control-point-distances": totalOffset
+        });
+      } else {
+        edge.removeStyle("curve-style");
+        edge.removeStyle("control-point-weights");
+        edge.removeStyle("control-point-distances");
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------------------------
+   * 10. 交互：点击节点高亮其邻居与相连边，点空白还原
    * ------------------------------------------------------------------------- */
   function bindInteractions(cy) {
     cy.on("tap", "node", function (evt) {
@@ -517,6 +573,9 @@
       if (evt.target === cy) {
         cy.elements().removeClass("cm-dim cm-hl");
       }
+    });
+    cy.on("dragfree", "node", function () {
+      rerouteBlockedEdges(cy);
     });
   }
 
@@ -541,7 +600,7 @@
   }
 
   /* ---------------------------------------------------------------------------
-   * 10. 缩放控制
+   * 11. 缩放控制
    * ------------------------------------------------------------------------- */
   function bindControls(cy, ctrl, onTheme) {
     ctrl.addEventListener("click", function (e) {
@@ -557,7 +616,7 @@
   }
 
   /* ---------------------------------------------------------------------------
-   * 11. 导出图片：把整个舞台（渐变背景 + 标题 + 图例 + 节点卡片 + 连线）
+   * 12. 导出图片：把整个舞台（渐变背景 + 标题 + 图例 + 节点卡片 + 连线）
    *     用 html-to-image 截图为 PNG / SVG。节点文字是 HTML 覆盖层，
    *     cytoscape 自带的 cy.png() 无法捕获，故走 DOM 截图方案。
    * ------------------------------------------------------------------------- */

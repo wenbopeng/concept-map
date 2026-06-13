@@ -17,23 +17,62 @@
    *    AI 输出的 node.data.type 命中下表的某个 key 即采用对应配色，
    *    未命中则回退到 "default"。
    * ------------------------------------------------------------------------- */
+  // 单色平涂、低饱和度配色（bg=填充色，border=描边，text=文字色）
   var PALETTE = {
-    key:     { g1: "#FF7E5F", g2: "#FD3A69", border: "#D81B60", text: "#ffffff", glow: "#FF7E5F" },
-    blue:    { g1: "#4FACFE", g2: "#2D6CDF", border: "#1E5BC6", text: "#ffffff", glow: "#4FACFE" },
-    green:   { g1: "#43E97B", g2: "#22B36B", border: "#159957", text: "#ffffff", glow: "#43E97B" },
-    purple:  { g1: "#B06AB3", g2: "#7B2FF7", border: "#6A1B9A", text: "#ffffff", glow: "#B06AB3" },
-    orange:  { g1: "#FFB75E", g2: "#F7971E", border: "#E07B00", text: "#ffffff", glow: "#FFB75E" },
-    red:     { g1: "#FF6A6A", g2: "#E53935", border: "#C62828", text: "#ffffff", glow: "#FF6A6A" },
-    pink:    { g1: "#FF9A9E", g2: "#FF4E8B", border: "#E91E63", text: "#ffffff", glow: "#FF9A9E" },
-    teal:    { g1: "#2BE9D6", g2: "#06A398", border: "#00897B", text: "#ffffff", glow: "#2BE9D6" },
-    yellow:  { g1: "#FDD835", g2: "#F9A825", border: "#F57F17", text: "#3a2c00", glow: "#FDD835" },
-    gray:    { g1: "#B0BEC5", g2: "#78909C", border: "#546E7A", text: "#ffffff", glow: "#B0BEC5" },
-    default: { g1: "#9BB5FF", g2: "#5C7CFA", border: "#3B5BDB", text: "#ffffff", glow: "#9BB5FF" }
+    key:     { bg: "#C77B62", border: "#A85F47", text: "#ffffff" },
+    blue:    { bg: "#6D89B0", border: "#51698C", text: "#ffffff" },
+    green:   { bg: "#6FA088", border: "#517A66", text: "#ffffff" },
+    purple:  { bg: "#8C7AA6", border: "#6E5C88", text: "#ffffff" },
+    orange:  { bg: "#C2945F", border: "#9E7544", text: "#ffffff" },
+    red:     { bg: "#C2756F", border: "#9E544F", text: "#ffffff" },
+    pink:    { bg: "#BE87A4", border: "#9A6582", text: "#ffffff" },
+    teal:    { bg: "#6FA0A0", border: "#517E7E", text: "#ffffff" },
+    yellow:  { bg: "#C7B56B", border: "#9E8D45", text: "#3a2c00" },
+    gray:    { bg: "#8A95A1", border: "#6B7682", text: "#ffffff" },
+    default: { bg: "#7C8AA6", border: "#5E6B86", text: "#ffffff" }
   };
   function pal(type) { return PALETTE[type] || PALETTE.default; }
 
-  var CROSS_COLOR = "#FF1FA2";        // 交叉连接线（强调色）
-  var EDGE_COLOR  = "#8A94A6";        // 普通连接线
+  var CROSS_COLOR = "#FF1FA2";        // 交叉连接线（强调色，日夜通用）
+
+  /* 主题相关的边/标签颜色（节点卡片为彩色渐变，日夜通用，无需切换）。
+     页面其余 UI 颜色走 CSS 变量，见 injectCSS。 */
+  var THEMES = {
+    dark:  { edgeLine: "#8A94A6", edgeText: "#dfe6f2", edgeLabelBg: "#0d1526", crossText: "#ffd0ec" },
+    light: { edgeLine: "#7a8499", edgeText: "#33405a", edgeLabelBg: "#ffffff", crossText: "#c2185b" }
+  };
+
+  function loadTheme() {
+    try { var t = localStorage.getItem("cm-theme"); if (t === "light" || t === "dark") return t; } catch (e) {}
+    return "dark";
+  }
+  function saveTheme(t) { try { localStorage.setItem("cm-theme", t); } catch (e) {} }
+
+  // 节点固定宽度（文字在此宽度内自动换行），高度按内容实测
+  var NODE_W      = { key: 210, other: 184 };
+  var NODE_MIN_H  = { key: 84,  other: 60  };
+
+  /* 用一个隐藏元素实测卡片在固定宽度下换行后的高度，
+     使节点尺寸恰好包住文字，既不裁剪也不留大片空白。 */
+  var _meas = null;
+  function measureNode(d) {
+    if (!_meas) {
+      _meas = document.createElement("div");
+      _meas.style.cssText = "position:absolute;visibility:hidden;left:-9999px;top:0;";
+      document.body.appendChild(_meas);
+    }
+    var isKey = d.type === "key";
+    var w = isKey ? NODE_W.key : NODE_W.other;
+    var cls = "cm-node cm-" + (PALETTE[d.type] ? d.type : "default");
+    _meas.style.width = w + "px";
+    _meas.innerHTML =
+      "<div class='" + cls + "' style='width:" + w + "px;height:auto'>" +
+      "<div class='cm-t'>" + esc(d.label || "") + "</div>" +
+      (d.desc ? "<div class='cm-d'>" + esc(d.desc) + "</div>" : "") +
+      "</div>";
+    var h = _meas.firstChild.offsetHeight;
+    return { w: w, h: Math.max(h, isKey ? NODE_MIN_H.key : NODE_MIN_H.other) };
+  }
 
   /* ---------------------------------------------------------------------------
    * 2. 依赖脚本（CDN）。按顺序加载，加载失败时优雅降级。
@@ -71,38 +110,56 @@
     var css = [
       "html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;",
       "  font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',Segoe UI,sans-serif;}",
-      "#cm-stage{position:fixed;inset:0;background:radial-gradient(circle at 20% 15%,#1b2a4a 0%,#0d1526 55%,#070b14 100%);}",
+
+      /* 主题变量：夜间 */
+      "#cm-stage.cm-dark{",
+      "  --cm-bg:radial-gradient(circle at 20% 15%,#1b2a4a 0%,#0d1526 55%,#070b14 100%);",
+      "  --cm-fg:#ffffff; --cm-fg-soft:#cfd8e6;",
+      "  --cm-panel:rgba(20,28,48,.72); --cm-panel-solid:rgba(20,28,48,.8); --cm-panel-hover:rgba(60,90,160,.9);",
+      "  --cm-border:rgba(255,255,255,.12); --cm-edge:#8A94A6;",
+      "  --cm-tip-bg:rgba(10,16,30,.95); --cm-tip-fg:#eaf0fb;",
+      "  --cm-title-shadow:0 2px 12px rgba(0,0,0,.6);}",
+      /* 主题变量：日间 */
+      "#cm-stage.cm-light{",
+      "  --cm-bg:radial-gradient(circle at 20% 15%,#eef3fb 0%,#dde6f3 55%,#cbd6ea 100%);",
+      "  --cm-fg:#1c2536; --cm-fg-soft:#44506a;",
+      "  --cm-panel:rgba(255,255,255,.78); --cm-panel-solid:rgba(255,255,255,.86); --cm-panel-hover:rgba(120,160,235,.9);",
+      "  --cm-border:rgba(20,40,80,.14); --cm-edge:#7a8499;",
+      "  --cm-tip-bg:rgba(255,255,255,.97); --cm-tip-fg:#25304a;",
+      "  --cm-title-shadow:0 1px 6px rgba(255,255,255,.55);}",
+
+      "#cm-stage{position:fixed;inset:0;background:var(--cm-bg);transition:background .35s ease;}",
       "#cm-cy{position:absolute;inset:0;}",
 
       /* 标题 */
-      "#cm-title{position:fixed;top:18px;left:24px;z-index:10;color:#fff;",
+      "#cm-title{position:fixed;top:18px;left:24px;z-index:10;color:var(--cm-fg);",
       "  font-size:20px;font-weight:700;letter-spacing:.5px;",
-      "  text-shadow:0 2px 12px rgba(0,0,0,.6);pointer-events:none;max-width:60%;}",
+      "  text-shadow:var(--cm-title-shadow);pointer-events:none;max-width:60%;}",
       "#cm-title small{display:block;font-size:12px;font-weight:400;opacity:.7;margin-top:4px;}",
 
       /* 图例 */
       "#cm-legend{position:fixed;top:18px;right:18px;z-index:10;",
-      "  background:rgba(20,28,48,.72);backdrop-filter:blur(8px);",
-      "  border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 14px;",
-      "  color:#cfd8e6;font-size:12px;line-height:1.9;max-width:220px;}",
+      "  background:var(--cm-panel);backdrop-filter:blur(8px);",
+      "  border:1px solid var(--cm-border);border-radius:12px;padding:10px 14px;",
+      "  color:var(--cm-fg-soft);font-size:12px;line-height:1.9;max-width:220px;}",
       "#cm-legend .row{display:flex;align-items:center;gap:8px;}",
       "#cm-legend .swatch{width:14px;height:14px;border-radius:4px;flex:0 0 auto;}",
       "#cm-legend .dash{width:22px;height:0;border-top:2px dashed " + CROSS_COLOR + ";}",
-      "#cm-legend .solid{width:22px;height:0;border-top:2px solid " + EDGE_COLOR + ";}",
+      "#cm-legend .solid{width:22px;height:0;border-top:2px solid var(--cm-edge);}",
 
       /* 控制按钮 */
       "#cm-ctrl{position:fixed;bottom:18px;right:18px;z-index:10;display:flex;gap:8px;}",
-      "#cm-ctrl button{width:40px;height:40px;border:none;border-radius:10px;cursor:pointer;",
-      "  background:rgba(20,28,48,.8);color:#fff;font-size:18px;line-height:1;",
-      "  border:1px solid rgba(255,255,255,.12);transition:.15s;backdrop-filter:blur(8px);}",
-      "#cm-ctrl button:hover{background:rgba(60,90,160,.9);transform:translateY(-1px);}",
+      "#cm-ctrl button{width:40px;height:40px;border-radius:10px;cursor:pointer;",
+      "  background:var(--cm-panel-solid);color:var(--cm-fg);font-size:18px;line-height:1;",
+      "  border:1px solid var(--cm-border);transition:.15s;backdrop-filter:blur(8px);}",
+      "#cm-ctrl button:hover{background:var(--cm-panel-hover);transform:translateY(-1px);}",
 
       /* HTML 节点卡片 */
       ".cm-node{box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;",
-      "  align-items:center;justify-content:center;text-align:center;padding:6px 10px;",
-      "  pointer-events:none;user-select:none;}",
-      ".cm-node .cm-t{font-weight:700;line-height:1.25;}",
-      ".cm-node .cm-d{font-weight:400;opacity:.9;line-height:1.2;margin-top:3px;}",
+      "  align-items:center;justify-content:center;text-align:center;padding:8px 12px;",
+      "  pointer-events:none;user-select:none;overflow-wrap:break-word;word-break:break-word;}",
+      ".cm-node .cm-t{font-weight:700;line-height:1.3;}",
+      ".cm-node .cm-d{font-weight:400;opacity:.9;line-height:1.35;margin-top:4px;}",
       ".cm-node.cm-key .cm-t{font-size:16px;}",
       ".cm-node.cm-key .cm-d{font-size:11px;}",
       ".cm-node .cm-t{font-size:14px;}",
@@ -110,7 +167,7 @@
 
       /* 描述气泡（无 html-label 扩展时的兜底，hover 显示 desc） */
       "#cm-tip{position:fixed;z-index:20;max-width:260px;pointer-events:none;",
-      "  background:rgba(10,16,30,.95);color:#eaf0fb;border:1px solid rgba(255,255,255,.15);",
+      "  background:var(--cm-tip-bg);color:var(--cm-tip-fg);border:1px solid var(--cm-border);",
       "  border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.5;",
       "  box-shadow:0 8px 28px rgba(0,0,0,.5);opacity:0;transition:opacity .12s;display:none;}",
 
@@ -140,6 +197,7 @@
    * ------------------------------------------------------------------------- */
   function buildDOM(meta) {
     var stage = document.createElement("div"); stage.id = "cm-stage";
+    stage.className = "cm-" + loadTheme();   // 立即套用主题，避免首帧无样式闪烁
     var cy = document.createElement("div"); cy.id = "cm-cy";
     stage.appendChild(cy);
 
@@ -150,8 +208,8 @@
 
     var legend = document.createElement("div"); legend.id = "cm-legend";
     legend.innerHTML =
-      "<div class='row'><span class='swatch' style='background:linear-gradient(135deg," + PALETTE.key.g1 + "," + PALETTE.key.g2 + ")'></span>核心概念</div>" +
-      "<div class='row'><span class='swatch' style='background:linear-gradient(135deg," + PALETTE.blue.g1 + "," + PALETTE.blue.g2 + ")'></span>分支概念</div>" +
+      "<div class='row'><span class='swatch' style='background:" + PALETTE.key.bg + "'></span>核心概念</div>" +
+      "<div class='row'><span class='swatch' style='background:" + PALETTE.blue.bg + "'></span>分支概念</div>" +
       "<div class='row'><span class='solid'></span>连接（关系）</div>" +
       "<div class='row'><span class='dash'></span>交叉连接（长程）</div>";
     stage.appendChild(legend);
@@ -161,6 +219,7 @@
 
     var ctrl = document.createElement("div"); ctrl.id = "cm-ctrl";
     ctrl.innerHTML =
+      "<button data-act='theme' title='切换日间/夜间'>🌙</button>" +
       "<button data-act='in'  title='放大'>＋</button>" +
       "<button data-act='out' title='缩小'>－</button>" +
       "<button data-act='fit' title='适应屏幕'>⤢</button>";
@@ -179,14 +238,19 @@
   /* ---------------------------------------------------------------------------
    * 6. 构建 cytoscape 样式
    * ------------------------------------------------------------------------- */
-  function buildStyle(htmlLabels) {
+  function buildStyle(htmlLabels, t) {
+    t = t || THEMES.dark;
     var nodeStyle = {
       "shape": "round-rectangle",
-      "width": function (n) { return n.data("type") === "key" ? 200 : 168; },
-      "height": function (n) { return n.data("type") === "key" ? 84 : 66; },
-      "background-fill": "linear-gradient",
-      "background-gradient-stop-colors": function (n) { var p = pal(n.data("type")); return p.g1 + " " + p.g2; },
-      "background-gradient-direction": "to-bottom-right",
+      // HTML 标签模式：用实测尺寸；原生模式：让节点随文字自适应
+      "width": htmlLabels
+        ? function (n) { return n.data("_w") || (n.data("type") === "key" ? NODE_W.key : NODE_W.other); }
+        : "label",
+      "height": htmlLabels
+        ? function (n) { return n.data("_h") || (n.data("type") === "key" ? NODE_MIN_H.key : NODE_MIN_H.other); }
+        : "label",
+      "padding": htmlLabels ? 0 : 12,
+      "background-color": function (n) { return pal(n.data("type")).bg; },
       "border-width": 2,
       "border-color": function (n) { return pal(n.data("type")).border; },
       "border-opacity": 0.9,
@@ -215,16 +279,18 @@
 
       { selector: "edge", style: {
           "width": 2.4,
-          "line-color": EDGE_COLOR,
+          "line-color": t.edgeLine,
           "line-opacity": 0.85,
           "curve-style": "bezier",
-          "target-arrow-color": EDGE_COLOR,
+          "target-arrow-color": t.edgeLine,
           "target-arrow-shape": "triangle",
           "arrow-scale": 1.1,
           "label": "data(label)",
           "font-size": 11,
-          "color": "#dfe6f2",
-          "text-background-color": "#0d1526",
+          "color": t.edgeText,
+          "text-wrap": "wrap",
+          "text-max-width": 120,
+          "text-background-color": t.edgeLabelBg,
           "text-background-opacity": 0.85,
           "text-background-shape": "round-rectangle",
           "text-background-padding": 3,
@@ -237,7 +303,7 @@
           "line-color": CROSS_COLOR,
           "target-arrow-color": CROSS_COLOR,
           "width": 3,
-          "color": "#ffd0ec",
+          "color": t.crossText,
           "z-index": 5
       }},
 
@@ -279,12 +345,23 @@
       if (window.cytoscapeFcose) { cytoscape.use(window.cytoscapeFcose); hasFcose = true; }
     } catch (e) { /* 已注册或不可用 */ hasFcose = !!window.cytoscapeFcose; }
 
+    // 预先实测每个节点的卡片尺寸（文字换行后），写入 data._w / _h
+    (data.nodes || []).forEach(function (n) {
+      if (n && n.data) {
+        var s = measureNode(n.data);
+        n.data._w = s.w;
+        n.data._h = s.h;
+      }
+    });
+
     var elements = (data.nodes || []).concat(data.edges || []);
+
+    var theme = loadTheme();
 
     var cy = cytoscape({
       container: dom.cyEl,
       elements: elements,
-      style: buildStyle(true),     // 先按“有 html 标签”渲染（隐藏原生文字）
+      style: buildStyle(true, THEMES[theme]),   // 先按“有 html 标签”渲染（隐藏原生文字）
       wheelSensitivity: 0.25,
       minZoom: 0.2,
       maxZoom: 2.5
@@ -300,9 +377,12 @@
           valignBox: "center", halignBox: "center",
           tpl: function (d) {
             var cls = "cm-node cm-" + (PALETTE[d.type] ? d.type : "default");
+            // 显式锁定卡片宽度（与 measureNode 一致），文字才会在此宽度内换行；
+            // 否则 html-label 容器无固定宽度，width:100% 会塌缩成内容宽度而不换行
+            var w = d._w || (d.type === "key" ? NODE_W.key : NODE_W.other);
             var t = "<div class='cm-t'>" + esc(d.label || "") + "</div>";
             var dsc = d.desc ? "<div class='cm-d'>" + esc(d.desc) + "</div>" : "";
-            return "<div class='" + cls + "'>" + t + dsc + "</div>";
+            return "<div class='" + cls + "' style='width:" + w + "px'>" + t + dsc + "</div>";
           }
         }]);
         htmlOk = true;
@@ -310,17 +390,50 @@
     }
     if (!htmlOk) {
       // 回退：显示原生标题文字 + hover 显示描述
-      cy.style(buildStyle(false)).update();
+      cy.style(buildStyle(false, THEMES[theme])).update();
       bindTooltip(cy, dom.tip);
     }
 
+    // 应用主题：只改“配色”——页面 UI 走 CSS 变量（切 class 即可），
+    // 连线颜色走 cytoscape，用增量 selector 局部覆盖，绝不重建节点样式，
+    // 节点卡片在日夜两种模式下都用同一套彩色渐变，保持不变。
+    var stage = dom.cyEl.parentNode;            // #cm-stage
+    var themeBtn = dom.ctrl.querySelector("[data-act='theme']");
+    function applyEdgeColors(t) {
+      cy.style()
+        .selector("edge").style({
+          "line-color": t.edgeLine, "target-arrow-color": t.edgeLine,
+          "color": t.edgeText, "text-background-color": t.edgeLabelBg
+        })
+        .selector("edge[?cross]").style({
+          "line-color": CROSS_COLOR, "target-arrow-color": CROSS_COLOR, "color": t.crossText
+        })
+        .selector("edge.cm-hl").style({
+          "line-color": "#FFE57F", "target-arrow-color": "#FFE57F"
+        })
+        .update();
+    }
+    function setTheme(name) {
+      theme = name;
+      stage.classList.remove("cm-dark", "cm-light");
+      stage.classList.add("cm-" + name);
+      applyEdgeColors(THEMES[name]);
+      if (themeBtn) {
+        themeBtn.textContent = name === "dark" ? "🌙" : "☀";
+        themeBtn.title = name === "dark" ? "切换到日间模式" : "切换到夜间模式";
+      }
+      saveTheme(name);
+    }
+    setTheme(theme);
+
     runLayout(cy, hasFcose);
     bindInteractions(cy);
-    bindControls(cy, dom.ctrl);
+    bindControls(cy, dom.ctrl, function () { setTheme(theme === "dark" ? "light" : "dark"); });
 
     window.addEventListener("resize", function () { cy.resize(); });
     // 暴露给控制台调试
     window.cy = cy;
+    window.cmSetTheme = setTheme;
   }
 
   /* ---------------------------------------------------------------------------
@@ -380,10 +493,11 @@
   /* ---------------------------------------------------------------------------
    * 10. 缩放控制
    * ------------------------------------------------------------------------- */
-  function bindControls(cy, ctrl) {
+  function bindControls(cy, ctrl, onTheme) {
     ctrl.addEventListener("click", function (e) {
       var act = e.target && e.target.getAttribute("data-act");
       if (!act) return;
+      if (act === "theme") { if (onTheme) onTheme(); return; }
       if (act === "fit") { cy.animate({ fit: { padding: 60 } }, { duration: 300 }); return; }
       var factor = act === "in" ? 1.25 : 0.8;
       var z = cy.zoom() * factor;
@@ -393,7 +507,7 @@
 
   function showError(msg) {
     var d = document.getElementById("cm-stage");
-    if (!d) { d = document.createElement("div"); d.id = "cm-stage"; document.body.appendChild(d); }
+    if (!d) { d = document.createElement("div"); d.id = "cm-stage"; d.className = "cm-" + loadTheme(); document.body.appendChild(d); }
     var e = document.createElement("div");
     e.id = "cm-error";
     e.innerHTML = "⚠ 概念地图渲染出错<br><br>" + esc(msg);

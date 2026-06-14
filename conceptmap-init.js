@@ -20,7 +20,7 @@
   // Flexoki 配色（单色平涂）：bg=accent-100 浅底，border=accent-600 标识色，text=accent-900 深字。
   // key 为焦点，用 red-600 实心 + paper 文字突出。日夜共用一套。
   var PALETTE = {
-    key:     { bg: "#AF3029", border: "#942822", text: "#FFFCF0" },
+    key:     { bg: "#db7c77", border: "#942822", text: "#FFFCF0" },
     blue:    { bg: "#C6DDE8", border: "#205EA6", text: "#12253B" },
     green:   { bg: "#DDE2B2", border: "#66800B", text: "#252D09" },
     purple:  { bg: "#E2D9E9", border: "#5E409D", text: "#261C39" },
@@ -38,8 +38,8 @@
 
   // 字号常量：CSS 渲染层与 SVG 导出层共用，改这里即同步生效。
   var FONT_SIZES = {
-    keyTitle: 20, keyDesc: 18,
-    title: 16,    desc: 15,
+    keyTitle: 20, keyDesc: 15,
+    title: 15,    desc: 10,
     edge: 15
   };
 

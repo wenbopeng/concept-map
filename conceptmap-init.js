@@ -36,6 +36,13 @@
 
   var CROSS_COLOR = "#B74583";        // 交叉连接线（Flexoki magenta-500，日夜通用）
 
+  // 字号常量：CSS 渲染层与 SVG 导出层共用，改这里即同步生效。
+  var FONT_SIZES = {
+    keyTitle: 20, keyDesc: 18,
+    title: 16,    desc: 15,
+    edge: 15
+  };
+
   /* 主题相关的边/标签颜色（Flexoki base 中性色系；节点卡片配色日夜共用，见 PALETTE）。
      页面其余 UI 颜色走 CSS 变量，见 injectCSS。 */
   var THEMES = {
@@ -166,10 +173,10 @@
       "  pointer-events:none;user-select:none;overflow-wrap:break-word;word-break:break-word;}",
       ".cm-node .cm-t{font-weight:700;line-height:1.3;}",
       ".cm-node .cm-d{font-weight:400;opacity:.9;line-height:1.35;margin-top:4px;}",
-      ".cm-node.cm-key .cm-t{font-size:16px;}",
-      ".cm-node.cm-key .cm-d{font-size:11px;}",
-      ".cm-node .cm-t{font-size:14px;}",
-      ".cm-node .cm-d{font-size:10.5px;}",
+      ".cm-node.cm-key .cm-t{font-size:" + FONT_SIZES.keyTitle + "px;}",
+      ".cm-node.cm-key .cm-d{font-size:" + FONT_SIZES.keyDesc + "px;}",
+      ".cm-node .cm-t{font-size:" + FONT_SIZES.title + "px;}",
+      ".cm-node .cm-d{font-size:" + FONT_SIZES.desc + "px;}",
 
       /* 描述气泡（无 html-label 扩展时的兜底，hover 显示 desc） */
       "#cm-tip{position:fixed;z-index:20;max-width:260px;pointer-events:none;",
@@ -283,15 +290,15 @@
       { selector: "node.cm-dim", style: { "opacity": 0.25 } },
 
       { selector: "edge", style: {
-          "width": 2.4,
+          "width": 2,
           "line-color": t.edgeLine,
-          "line-opacity": 0.85,
+          "line-opacity": 0.8,
           "curve-style": "bezier",
           "target-arrow-color": t.edgeLine,
           "target-arrow-shape": "triangle",
-          "arrow-scale": 1.1,
+          "arrow-scale": 1.5,
           "label": "data(label)",
-          "font-size": 11,
+          "font-size": FONT_SIZES.edge,
           "color": t.edgeText,
           "text-wrap": "wrap",
           "text-max-width": 120,
@@ -776,8 +783,8 @@
   // (mw×mh) 排版，再用 transform:scale(sc) 缩放到目标尺寸 (fw×fh)，与
   // cy.svg 的几何对齐。样式全部内联，导出的 SVG 自包含、无需外部 CSS。
   function svgCardFO(d, x, y, fw, fh, mw, mh, sc, color, font, isKey) {
-    var tFont = isKey ? 16 : 14;
-    var dFont = isKey ? 11 : 10.5;
+    var tFont = isKey ? FONT_SIZES.keyTitle : FONT_SIZES.title;
+    var dFont = isKey ? FONT_SIZES.keyDesc  : FONT_SIZES.desc;
     var wrap = "box-sizing:border-box;width:" + mw + "px;height:" + mh + "px;" +
       "transform:scale(" + sc + ");transform-origin:top left;" +
       "display:flex;flex-direction:column;align-items:center;justify-content:center;" +

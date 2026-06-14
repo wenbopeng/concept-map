@@ -90,6 +90,8 @@
     "https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.min.js",
     "https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.min.js",
     "https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/cytoscape-fcose.min.js",
+    "https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js",
+    "https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.js",
     "https://cdn.jsdelivr.net/npm/cytoscape-node-html-label@1.2.2/dist/cytoscape-node-html-label.min.js",
     "https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js",
     "https://cdn.jsdelivr.net/npm/cytoscape-svg@0.4.0/cytoscape-svg.js"
@@ -157,15 +159,16 @@
       "#cm-ctrl button:hover{background:var(--cm-panel-hover);transform:translateY(-1px);}",
 
       /* 导出菜单（点“导出”按钮弹出，选择 PNG / SVG） */
-      "#cm-export-menu{position:fixed;bottom:66px;right:18px;z-index:11;display:none;",
+      "#cm-export-menu,#cm-layout-menu{position:fixed;bottom:66px;right:18px;z-index:11;display:none;",
       "  flex-direction:column;gap:6px;background:var(--cm-panel-solid);backdrop-filter:blur(8px);",
       "  border:1px solid var(--cm-border);border-radius:10px;padding:8px;",
       "  box-shadow:0 8px 28px rgba(0,0,0,.35);}",
-      "#cm-export-menu.open{display:flex;}",
-      "#cm-export-menu button{min-width:128px;height:34px;border-radius:8px;cursor:pointer;",
+      "#cm-export-menu.open,#cm-layout-menu.open{display:flex;}",
+      "#cm-export-menu button,#cm-layout-menu button{min-width:148px;height:34px;border-radius:8px;cursor:pointer;",
       "  background:transparent;color:var(--cm-fg);font-size:13px;line-height:1;",
       "  border:1px solid var(--cm-border);transition:.15s;padding:0 12px;text-align:left;}",
-      "#cm-export-menu button:hover{background:var(--cm-panel-hover);}",
+      "#cm-export-menu button:hover,#cm-layout-menu button:hover{background:var(--cm-panel-hover);}",
+      "#cm-layout-menu button.cm-act{font-weight:700;border-color:var(--cm-fg);}",
 
       /* HTML 节点卡片 */
       ".cm-node{box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;",
@@ -224,10 +227,11 @@
 
     var ctrl = document.createElement("div"); ctrl.id = "cm-ctrl";
     ctrl.innerHTML =
-      "<button data-act='theme' title='切换日间/夜间'>🌙</button>" +
-      "<button data-act='in'  title='放大'>＋</button>" +
-      "<button data-act='out' title='缩小'>－</button>" +
-      "<button data-act='fit' title='适应屏幕'>⤢</button>" +
+      "<button data-act='theme'  title='切换日间/夜间'>🌙</button>" +
+      "<button data-act='in'     title='放大'>＋</button>" +
+      "<button data-act='out'    title='缩小'>－</button>" +
+      "<button data-act='fit'    title='适应屏幕'>⤢</button>" +
+      "<button data-act='layout' title='切换布局'>⊞</button>" +
       "<button data-act='export' title='导出图片'>⬇</button>";
     stage.appendChild(ctrl);
 
@@ -237,8 +241,17 @@
       "<button data-fmt='svg'>导出 SVG</button>";
     stage.appendChild(menu);
 
+    var layoutMenu = document.createElement("div"); layoutMenu.id = "cm-layout-menu";
+    layoutMenu.innerHTML =
+      "<button data-layout='fcose'>力导向（默认）</button>" +
+      "<button data-layout='dagre-tb'>层级 ↓ 从上到下</button>" +
+      "<button data-layout='dagre-lr'>层级 → 从左到右</button>" +
+      "<button data-layout='breadthfirst'>树形展开</button>" +
+      "<button data-layout='concentric'>同心圆</button>";
+    stage.appendChild(layoutMenu);
+
     document.body.appendChild(stage);
-    return { cyEl: cy, tip: tip, ctrl: ctrl, menu: menu };
+    return { cyEl: cy, tip: tip, ctrl: ctrl, menu: menu, layoutMenu: layoutMenu };
   }
 
   function esc(s) {
@@ -357,6 +370,12 @@
       if (window.cytoscapeFcose) { cytoscape.use(window.cytoscapeFcose); hasFcose = true; }
     } catch (e) { /* 已注册或不可用 */ hasFcose = !!window.cytoscapeFcose; }
 
+    // 注册 dagre（若可用）
+    var hasDagre = false;
+    try {
+      if (window.cytoscapeDagre) { cytoscape.use(window.cytoscapeDagre); hasDagre = true; }
+    } catch (e) { /* 已注册或不可用 */ hasDagre = !!window.cytoscapeDagre; }
+
     // 注册 cytoscape-svg（矢量导出，若可用）
     try {
       if (window.cytoscapeSvg) { cytoscape.use(window.cytoscapeSvg); }
@@ -448,10 +467,15 @@
 
     // 固定随机种子：默认常量，可在 JSON 的 meta.seed 中覆盖
     var seed = (meta.seed != null ? meta.seed : 20240613) >>> 0;
-    runLayout(cy, hasFcose, seed);
+    var currentLayout = meta.layout || "fcose";
+    runLayout(cy, hasFcose, hasDagre, seed, currentLayout);
     bindInteractions(cy);
     bindControls(cy, dom.ctrl, function () { setTheme(theme === "dark" ? "light" : "dark"); });
-    bindExport(stage, dom.ctrl, dom.menu, cy, meta, function () { return theme; });
+    bindExport(stage, dom.ctrl, dom.menu, dom.layoutMenu, cy, meta, function () { return theme; });
+    bindLayout(dom.ctrl, dom.layoutMenu, dom.menu, currentLayout, function (name) {
+      currentLayout = name;
+      runLayout(cy, hasFcose, hasDagre, seed, name);
+    });
 
     window.addEventListener("resize", function () { cy.resize(); });
     // 暴露给控制台调试
@@ -474,14 +498,57 @@
     };
   }
 
-  function runLayout(cy, hasFcose, seed) {
-    var opts = hasFcose
-      ? { name: "fcose", quality: "proof", animate: true, animationDuration: 600,
-          randomize: true, padding: 60, nodeSeparation: 140,
-          idealEdgeLength: 150, nodeRepulsion: 9000, gravity: 0.25,
-          fit: true, packComponents: true }
-      : { name: "cose", animate: true, animationDuration: 600, padding: 60,
-          nodeRepulsion: 12000, idealEdgeLength: 150, fit: true };
+  // 支持的布局：
+  //   "fcose"        — 力导向，有机分布（默认，需 CDN）
+  //   "dagre-tb"     — 有向层级，自上而下（需 CDN）
+  //   "dagre-lr"     — 有向层级，从左到右（需 CDN）
+  //   "breadthfirst" — BFS 树形展开（内置）
+  //   "concentric"   — 同心圆，度数高的节点居中（内置）
+  //   "cose"         — 力导向降级（内置）
+  // 在 JSON meta.layout 字段指定，未填则默认 "fcose"。
+  function runLayout(cy, hasFcose, hasDagre, seed, layoutName) {
+    var req = layoutName || "fcose";
+    var opts;
+
+    if (req === "dagre-tb" || req === "dagre-lr") {
+      if (hasDagre) {
+        opts = { name: "dagre", rankDir: req === "dagre-lr" ? "LR" : "TB",
+                 animate: true, animationDuration: 600, padding: 60,
+                 nodeSep: 60, rankSep: 120, fit: true };
+      } else {
+        console.warn("[conceptmap] dagre 未加载，降级为 fcose/cose");
+        req = "fcose";
+      }
+    }
+
+    if (!opts && req === "breadthfirst") {
+      opts = { name: "breadthfirst", animate: true, animationDuration: 600,
+               padding: 60, spacingFactor: 1.6, directed: true, fit: true };
+    }
+
+    if (!opts && req === "concentric") {
+      opts = { name: "concentric", animate: true, animationDuration: 600,
+               padding: 60, minNodeSpacing: 60, fit: true,
+               concentric: function (n) { return n.degree(); },
+               levelWidth: function () { return 2; } };
+    }
+
+    if (!opts && req === "cose") {
+      opts = { name: "cose", animate: true, animationDuration: 600, padding: 60,
+               nodeRepulsion: 12000, idealEdgeLength: 150, fit: true };
+    }
+
+    // fcose（默认）或其他未知值
+    if (!opts) {
+      opts = hasFcose
+        ? { name: "fcose", quality: "proof", animate: true, animationDuration: 600,
+            randomize: true, padding: 60, nodeSeparation: 140,
+            idealEdgeLength: 150, nodeRepulsion: 9000, gravity: 0.25,
+            fit: true, packComponents: true }
+        : { name: "cose", animate: true, animationDuration: 600, padding: 60,
+            nodeRepulsion: 12000, idealEdgeLength: 150, fit: true };
+    }
+
     var layout = cy.layout(opts);
     layout.on("layoutstop", function () {
       rerouteBlockedEdges(cy);
@@ -627,12 +694,13 @@
    *     用 html-to-image 截图为 PNG / SVG。节点文字是 HTML 覆盖层，
    *     cytoscape 自带的 cy.png() 无法捕获，故走 DOM 截图方案。
    * ------------------------------------------------------------------------- */
-  function bindExport(stage, ctrl, menu, cy, meta, getTheme) {
+  function bindExport(stage, ctrl, menu, layoutMenu, cy, meta, getTheme) {
     var btn = ctrl.querySelector("[data-act='export']");
     if (!btn || !menu) return;
 
     btn.addEventListener("click", function (e) {
-      e.stopPropagation();            // 不冒泡到 #cm-ctrl 的缩放处理器
+      e.stopPropagation();
+      if (layoutMenu) layoutMenu.classList.remove("open");
       menu.classList.toggle("open");
     });
     menu.addEventListener("click", function (e) {
@@ -642,6 +710,34 @@
       exportImage(stage, cy, meta, getTheme(), fmt);
     });
     // 点击别处关闭菜单
+    document.addEventListener("click", function () { menu.classList.remove("open"); });
+  }
+
+  function bindLayout(ctrl, menu, exportMenu, initialLayout, onLayout) {
+    var btn = ctrl.querySelector("[data-act='layout']");
+    if (!btn || !menu) return;
+
+    function syncActive(name) {
+      menu.querySelectorAll("button").forEach(function (b) {
+        b.classList.toggle("cm-act", b.getAttribute("data-layout") === name);
+      });
+    }
+    syncActive(initialLayout);
+
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (exportMenu) exportMenu.classList.remove("open");
+      menu.classList.toggle("open");
+    });
+
+    menu.addEventListener("click", function (e) {
+      var name = e.target && e.target.getAttribute("data-layout");
+      if (!name) return;
+      menu.classList.remove("open");
+      syncActive(name);
+      onLayout(name);
+    });
+
     document.addEventListener("click", function () { menu.classList.remove("open"); });
   }
 

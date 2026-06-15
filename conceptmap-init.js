@@ -39,7 +39,7 @@
   // 字号常量：CSS 渲染层与 SVG 导出层共用，改这里即同步生效。
   var FONT_SIZES = {
     keyTitle: 20, keyDesc: 15,
-    title: 15,    desc: 10,
+    title: 20,    desc: 10,
     edge: 15
   };
 
@@ -296,9 +296,19 @@
     return [
       { selector: "node", style: nodeStyle },
 
-      { selector: "node:selected, node.cm-hl", style: {
+      { selector: "node.cm-hl", style: {
           "border-width": 5,
           "border-color": t.hl
+      }},
+      { selector: "node.cm-focus", style: {
+          "border-width": 8,
+          "border-color": "#E03131",
+          "shadow-blur": 48,
+          "shadow-color": "#E03131",
+          "shadow-opacity": 1,
+          "shadow-offset-x": 0,
+          "shadow-offset-y": 0,
+          "z-index": 30
       }},
       { selector: "node.cm-dim", style: { "opacity": 0.25 } },
 
@@ -338,6 +348,14 @@
           "width": 3.6,
           "line-opacity": 1,
           "z-index": 20
+      }},
+      { selector: "edge.cm-hl-cross", style: {
+          "line-color": "#3CB371",
+          "target-arrow-color": "#3CB371",
+          "color": "#3CB371",
+          "width": 3.6,
+          "line-opacity": 1,
+          "z-index": 21
       }},
       { selector: "edge.cm-dim", style: { "opacity": 0.12 } }
     ];
@@ -437,7 +455,7 @@
     var themeBtn = dom.ctrl.querySelector("[data-act='theme']");
     function applyEdgeColors(t) {
       cy.style()
-        .selector("node:selected, node.cm-hl").style({
+        .selector("node.cm-hl").style({
           "border-color": t.hl
         })
         .selector("edge").style({
@@ -449,6 +467,9 @@
         })
         .selector("edge.cm-hl").style({
           "line-color": t.hl, "target-arrow-color": t.hl
+        })
+        .selector("edge.cm-hl-cross").style({
+          "line-color": "#3CB371", "target-arrow-color": "#3CB371", "color": "#3CB371"
         })
         .update();
     }
@@ -638,14 +659,59 @@
   function bindInteractions(cy) {
     cy.on("tap", "node", function (evt) {
       var n = evt.target;
-      var nb = n.closedNeighborhood();
-      cy.elements().addClass("cm-dim");
-      nb.removeClass("cm-dim").addClass("cm-hl");
-      n.removeClass("cm-dim");
+      var upstream   = n.predecessors();
+      var downstream = n.successors();
+      var paths = upstream.union(downstream).union(n);
+
+      cy.elements().addClass("cm-dim").removeClass("cm-hl cm-focus cm-hl-cross");
+      upstream.union(downstream).union(n).removeClass("cm-dim").addClass("cm-hl");
+
+      // 判断哪些上游边属于"纯实线路径"（双向 BFS）：
+      // solidBack：从 n 反向只走非 cross 边可到达的节点（即"到 n 存在纯实线通道"）
+      var solidBack = {};
+      solidBack[n.id()] = true;
+      var q1 = [n];
+      while (q1.length) {
+        var a = q1.shift();
+        upstream.edges().forEach(function (ue) {
+          var sid = ue.source().id();
+          if (ue.target().id() === a.id() && !ue.data("cross") && !solidBack[sid]) {
+            solidBack[sid] = true;
+            q1.push(ue.source());
+          }
+        });
+      }
+
+      // solidFwd：从上游根节点正向只走非 cross 边可到达的节点（即"从起点有纯实线通道"）
+      var solidFwd = {};
+      upstream.nodes().forEach(function (node) {
+        if (node.incomers("edge").intersection(upstream).length === 0) {
+          solidFwd[node.id()] = true;
+        }
+      });
+      var q2 = upstream.nodes().filter(function (node) { return !!solidFwd[node.id()]; }).toArray();
+      while (q2.length) {
+        var b = q2.shift();
+        upstream.edges().forEach(function (ue) {
+          var tid = ue.target().id();
+          if (ue.source().id() === b.id() && !ue.data("cross") && !solidFwd[tid]) {
+            solidFwd[tid] = true;
+            q2.push(ue.target());
+          }
+        });
+      }
+
+      // 不在任何纯实线路径上的上游边 → 绿色（含 cross 边，以及只能经 cross 才可到达的边）
+      upstream.edges().forEach(function (ue) {
+        var onSolid = !ue.data("cross") && solidFwd[ue.source().id()] && solidBack[ue.target().id()];
+        if (!onSolid) ue.removeClass("cm-hl").addClass("cm-hl-cross");
+      });
+
+      n.removeClass("cm-hl").addClass("cm-focus");
     });
     cy.on("tap", function (evt) {
       if (evt.target === cy) {
-        cy.elements().removeClass("cm-dim cm-hl");
+        cy.elements().removeClass("cm-dim cm-hl cm-focus cm-hl-cross");
       }
     });
     cy.on("dragfree", "node", function () {

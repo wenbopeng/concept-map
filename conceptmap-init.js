@@ -173,7 +173,8 @@
       /* HTML 节点卡片 */
       ".cm-node{box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;",
       "  align-items:center;justify-content:center;text-align:center;padding:8px 12px;",
-      "  pointer-events:none;user-select:none;overflow-wrap:break-word;word-break:break-word;}",
+      "  pointer-events:none;user-select:none;overflow-wrap:break-word;word-break:break-word;",
+      "  transition:opacity .15s;}",
       ".cm-node .cm-t{font-weight:700;line-height:1.3;}",
       ".cm-node .cm-d{font-weight:400;opacity:.9;line-height:1.35;margin-top:4px;}",
       ".cm-node.cm-key .cm-t{font-size:" + FONT_SIZES.keyTitle + "px;}",
@@ -436,7 +437,7 @@
             var w = d._w || (d.type === "key" ? NODE_W.key : NODE_W.other);
             var t = "<div class='cm-t'>" + esc(d.label || "") + "</div>";
             var dsc = d.desc ? "<div class='cm-d'>" + esc(d.desc) + "</div>" : "";
-            return "<div class='" + cls + "' style='width:" + w + "px'>" + t + dsc + "</div>";
+            return "<div class='" + cls + "' data-cm-nid='" + d.id + "' style='width:" + w + "px'>" + t + dsc + "</div>";
           }
         }]);
         htmlOk = true;
@@ -657,6 +658,19 @@
    * 10. 交互：点击节点高亮其邻居与相连边，点空白还原
    * ------------------------------------------------------------------------- */
   function bindInteractions(cy) {
+    // 动态 <style> 注入法：CSS 规则住在 <head>，即使 html-label 插件重建 DOM 元素，
+    // 浏览器也会立即对匹配 data-cm-nid 的元素重新应用，不存在 querySelector 时序问题。
+    var dimStyleEl = document.createElement("style");
+    document.head.appendChild(dimStyleEl);
+
+    function syncHtmlOpacity() {
+      var rules = "";
+      cy.nodes(".cm-dim").forEach(function (n) {
+        rules += '[data-cm-nid="' + n.id() + '"]{opacity:.25!important}';
+      });
+      dimStyleEl.textContent = rules;
+    }
+
     cy.on("tap", "node", function (evt) {
       var n = evt.target;
       var upstream   = n.predecessors();
@@ -708,10 +722,12 @@
       });
 
       n.removeClass("cm-hl").addClass("cm-focus");
+      syncHtmlOpacity();
     });
     cy.on("tap", function (evt) {
       if (evt.target === cy) {
         cy.elements().removeClass("cm-dim cm-hl cm-focus cm-hl-cross");
+        syncHtmlOpacity();
       }
     });
     cy.on("dragfree", "node", function () {

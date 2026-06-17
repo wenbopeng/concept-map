@@ -35,11 +35,12 @@
   function pal(type) { return PALETTE[type] || PALETTE.default; }
 
   var CROSS_COLOR = "#B74583";        // 交叉连接线（Flexoki magenta-500，日夜通用）
+  var DOWN_COLOR  = "#1098AD";        // 后代路径高亮色（青色，日夜通用）
 
   // 字号常量：CSS 渲染层与 SVG 导出层共用，改这里即同步生效。
   var FONT_SIZES = {
     keyTitle: 20, keyDesc: 15,
-    title: 20,    desc: 10,
+    title: 20,    desc: 15,
     edge: 15
   };
 
@@ -92,6 +93,8 @@
     "https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/cytoscape-fcose.min.js",
     "https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js",
     "https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.js",
+    "https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js",
+    "https://cdn.jsdelivr.net/npm/cytoscape-elk@2.2.0/dist/cytoscape-elk.js",
     "https://cdn.jsdelivr.net/npm/cytoscape-node-html-label@1.2.2/dist/cytoscape-node-html-label.min.js",
     "https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js",
     "https://cdn.jsdelivr.net/npm/cytoscape-svg@0.4.0/cytoscape-svg.js"
@@ -158,17 +161,17 @@
       "  border:1px solid var(--cm-border);transition:.15s;backdrop-filter:blur(8px);}",
       "#cm-ctrl button:hover{background:var(--cm-panel-hover);transform:translateY(-1px);}",
 
-      /* 导出菜单（点“导出”按钮弹出，选择 PNG / SVG） */
-      "#cm-export-menu,#cm-layout-menu{position:fixed;bottom:66px;right:18px;z-index:11;display:none;",
+      /* 弹出菜单（导出 / 布局 / 边样式） */
+      "#cm-export-menu,#cm-layout-menu,#cm-edge-menu{position:fixed;bottom:66px;right:18px;z-index:11;display:none;",
       "  flex-direction:column;gap:6px;background:var(--cm-panel-solid);backdrop-filter:blur(8px);",
       "  border:1px solid var(--cm-border);border-radius:10px;padding:8px;",
       "  box-shadow:0 8px 28px rgba(0,0,0,.35);}",
-      "#cm-export-menu.open,#cm-layout-menu.open{display:flex;}",
-      "#cm-export-menu button,#cm-layout-menu button{min-width:148px;height:34px;border-radius:8px;cursor:pointer;",
+      "#cm-export-menu.open,#cm-layout-menu.open,#cm-edge-menu.open{display:flex;}",
+      "#cm-export-menu button,#cm-layout-menu button,#cm-edge-menu button{min-width:148px;height:34px;border-radius:8px;cursor:pointer;",
       "  background:transparent;color:var(--cm-fg);font-size:13px;line-height:1;",
       "  border:1px solid var(--cm-border);transition:.15s;padding:0 12px;text-align:left;}",
-      "#cm-export-menu button:hover,#cm-layout-menu button:hover{background:var(--cm-panel-hover);}",
-      "#cm-layout-menu button.cm-act{font-weight:700;border-color:var(--cm-fg);}",
+      "#cm-export-menu button:hover,#cm-layout-menu button:hover,#cm-edge-menu button:hover{background:var(--cm-panel-hover);}",
+      "#cm-layout-menu button.cm-act,#cm-edge-menu button.cm-act{font-weight:700;border-color:var(--cm-fg);}",
 
       /* HTML 节点卡片 */
       ".cm-node{box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;",
@@ -233,6 +236,7 @@
       "<button data-act='out'    title='缩小'>－</button>" +
       "<button data-act='fit'    title='适应屏幕'>⤢</button>" +
       "<button data-act='layout' title='切换布局'>⊞</button>" +
+      "<button data-act='edge'   title='边样式'>⌒</button>" +
       "<button data-act='export' title='导出图片'>⬇</button>";
     stage.appendChild(ctrl);
 
@@ -247,12 +251,22 @@
       "<button data-layout='fcose'>力导向（默认）</button>" +
       "<button data-layout='dagre-tb'>层级 ↓ 从上到下</button>" +
       "<button data-layout='dagre-lr'>层级 → 从左到右</button>" +
-      "<button data-layout='breadthfirst'>树形展开</button>" +
+      "<button data-layout='elk-tb'>ELK 层级 ↓ 从上到下</button>" +
+      "<button data-layout='elk-lr'>ELK 层级 → 从左到右</button>" +
+      "<button data-layout='breadthfirst'>树形展开 ↓</button>" +
+      "<button data-layout='breadthfirst-lr'>树形展开 →</button>" +
       "<button data-layout='concentric'>同心圆</button>";
     stage.appendChild(layoutMenu);
 
+    var edgeMenu = document.createElement("div"); edgeMenu.id = "cm-edge-menu";
+    edgeMenu.innerHTML =
+      "<button data-edge='bezier'>贝塞尔曲线（默认）</button>" +
+      "<button data-edge='taxi-h'>正交折线（横向优先）</button>" +
+      "<button data-edge='taxi-v'>正交折线（纵向优先）</button>";
+    stage.appendChild(edgeMenu);
+
     document.body.appendChild(stage);
-    return { cyEl: cy, tip: tip, ctrl: ctrl, menu: menu, layoutMenu: layoutMenu };
+    return { cyEl: cy, tip: tip, ctrl: ctrl, menu: menu, layoutMenu: layoutMenu, edgeMenu: edgeMenu };
   }
 
   function esc(s) {
@@ -301,6 +315,10 @@
           "border-width": 5,
           "border-color": t.hl
       }},
+      { selector: "node.cm-hl-down", style: {
+          "border-width": 5,
+          "border-color": DOWN_COLOR
+      }},
       { selector: "node.cm-focus", style: {
           "border-width": 8,
           "border-color": "#E03131",
@@ -324,8 +342,7 @@
           "label": "data(label)",
           "font-size": FONT_SIZES.edge,
           "color": t.edgeText,
-          "text-wrap": "wrap",
-          "text-max-width": 120,
+          "text-wrap": "none",
           "text-background-color": t.edgeLabelBg,
           "text-background-opacity": 0.85,
           "text-background-shape": "round-rectangle",
@@ -357,6 +374,14 @@
           "width": 3.6,
           "line-opacity": 1,
           "z-index": 21
+      }},
+      { selector: "edge.cm-hl-down", style: {
+          "line-color": DOWN_COLOR,
+          "target-arrow-color": DOWN_COLOR,
+          "color": DOWN_COLOR,
+          "width": 3.6,
+          "line-opacity": 1,
+          "z-index": 22
       }},
       { selector: "edge.cm-dim", style: { "opacity": 0.12 } }
     ];
@@ -394,6 +419,12 @@
     try {
       if (window.cytoscapeDagre) { cytoscape.use(window.cytoscapeDagre); hasDagre = true; }
     } catch (e) { /* 已注册或不可用 */ hasDagre = !!window.cytoscapeDagre; }
+
+    // 注册 elk（若可用）
+    var hasElk = false;
+    try {
+      if (window.cytoscapeElk) { cytoscape.use(window.cytoscapeElk); hasElk = true; }
+    } catch (e) { /* 已注册或不可用 */ hasElk = !!window.cytoscapeElk; }
 
     // 注册 cytoscape-svg（矢量导出，若可用）
     try {
@@ -472,6 +503,9 @@
         .selector("edge.cm-hl-cross").style({
           "line-color": "#3CB371", "target-arrow-color": "#3CB371", "color": "#3CB371"
         })
+        .selector("edge.cm-hl-down").style({
+          "line-color": DOWN_COLOR, "target-arrow-color": DOWN_COLOR, "color": DOWN_COLOR
+        })
         .update();
     }
     function setTheme(name) {
@@ -490,13 +524,18 @@
     // 固定随机种子：默认常量，可在 JSON 的 meta.seed 中覆盖
     var seed = (meta.seed != null ? meta.seed : 20240613) >>> 0;
     var currentLayout = meta.layout || "fcose";
-    runLayout(cy, hasFcose, hasDagre, seed, currentLayout);
-    bindInteractions(cy);
+    var currentEdgeStyle = "bezier";
+    runLayout(cy, hasFcose, hasDagre, hasElk, seed, currentLayout, currentEdgeStyle);
+    bindInteractions(cy, function() { return currentEdgeStyle; });
     bindControls(cy, dom.ctrl, function () { setTheme(theme === "dark" ? "light" : "dark"); });
-    bindExport(stage, dom.ctrl, dom.menu, dom.layoutMenu, cy, meta, function () { return theme; });
-    bindLayout(dom.ctrl, dom.layoutMenu, dom.menu, currentLayout, function (name) {
+    bindExport(stage, dom.ctrl, dom.menu, dom.layoutMenu, dom.edgeMenu, cy, meta, function () { return theme; });
+    bindLayout(dom.ctrl, dom.layoutMenu, dom.menu, dom.edgeMenu, currentLayout, function (name) {
       currentLayout = name;
-      runLayout(cy, hasFcose, hasDagre, seed, name);
+      runLayout(cy, hasFcose, hasDagre, hasElk, seed, name, currentEdgeStyle);
+    });
+    bindEdge(dom.ctrl, dom.edgeMenu, dom.menu, dom.layoutMenu, currentEdgeStyle, function (name) {
+      currentEdgeStyle = name;
+      applyEdgeStyle(cy, name);
     });
 
     window.addEventListener("resize", function () { cy.resize(); });
@@ -524,40 +563,110 @@
   //   "fcose"        — 力导向，有机分布（默认，需 CDN）
   //   "dagre-tb"     — 有向层级，自上而下（需 CDN）
   //   "dagre-lr"     — 有向层级，从左到右（需 CDN）
+  //   "elk-tb"       — ELK layered，自上而下（需 CDN）
+  //   "elk-lr"       — ELK layered，从左到右（需 CDN）
   //   "breadthfirst" — BFS 树形展开（内置）
   //   "concentric"   — 同心圆，度数高的节点居中（内置）
   //   "cose"         — 力导向降级（内置）
   // 在 JSON meta.layout 字段指定，未填则默认 "fcose"。
-  function runLayout(cy, hasFcose, hasDagre, seed, layoutName) {
+  // 按边标签长度计算理想边长：不折行，文字单行显示。
+  // 中文字符约 15px/字（font-size 15），两端各留 40px（节点边缘 + 箭头）。
+  function edgeLengthFn(edge) {
+    var lbl = (edge.data ? edge.data("label") : edge.label) || "";
+    return Math.max(160, lbl.length * 15 + 80);  // 两端各 40px 缓冲
+  }
+
+  // 图中所有边标签的最大文字像素宽度（不含布局缓冲），供层级/树形布局使用。
+  function maxLabelPx(cy) {
+    var max = 0;
+    cy.edges().forEach(function(e) {
+      var px = (e.data("label") || "").length * 15;
+      if (px > max) max = px;
+    });
+    return max;
+  }
+
+  function runLayout(cy, hasFcose, hasDagre, hasElk, seed, layoutName, edgeStyle) {
     var req = layoutName || "fcose";
     var opts;
+
+    // 层级/树形布局用纯文字宽度 + 小缓冲；力导布局用 edgeLengthFn（含自身缓冲）。
+    var mlpx = maxLabelPx(cy);
+
+    // 每次切换布局前清除上次留下的逐边样式覆盖（rerouteBlockedEdges / taxi）
+    cy.edges().forEach(function(e) {
+      e.removeStyle("curve-style");
+      e.removeStyle("taxi-direction");
+      e.removeStyle("text-rotation");
+      e.removeStyle("control-point-weights");
+      e.removeStyle("control-point-distances");
+    });
 
     if (req === "dagre-tb" || req === "dagre-lr") {
       if (hasDagre) {
         opts = { name: "dagre", rankDir: req === "dagre-lr" ? "LR" : "TB",
                  animate: true, animationDuration: 600, padding: 60,
-                 nodeSep: 60, rankSep: 120, fit: true };
+                 nodeSep: 80, rankSep: Math.max(120, mlpx + 40), fit: true };
       } else {
         console.warn("[conceptmap] dagre 未加载，降级为 fcose/cose");
         req = "fcose";
       }
     }
 
+    if (req === "elk-tb" || req === "elk-lr") {
+      if (hasElk) {
+        var elkDir = req === "elk-lr" ? "RIGHT" : "DOWN";
+        var nodeGap = Math.max(120, mlpx + 40);
+        opts = { name: "elk", animate: true, animationDuration: 600, padding: 60, fit: true,
+                 elk: {
+                   algorithm: "layered",
+                   "elk.direction": elkDir,
+                   "elk.layered.spacing.nodeNodeBetweenLayers": String(nodeGap),
+                   "elk.spacing.nodeNode": "80",
+                   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX"
+                 } };
+      } else {
+        console.warn("[conceptmap] elk 未加载，降级为 dagre/fcose");
+        req = hasDagre ? (req === "elk-lr" ? "dagre-lr" : "dagre-tb") : "fcose";
+        runLayout(cy, hasFcose, hasDagre, false, seed, req, edgeStyle);
+        return;
+      }
+    }
+
+    if (req === "breadthfirst-lr") {
+      var bfSpacing = Math.max(1.6, (mlpx + 40) / 120);
+      var bfLayout = cy.layout({ name: "breadthfirst", animate: false,
+                                 spacingFactor: bfSpacing, directed: true, fit: false });
+      bfLayout.on("layoutstop", function () {
+        var bb = cy.elements().boundingBox({});
+        var midX = (bb.x1 + bb.x2) / 2, midY = (bb.y1 + bb.y2) / 2;
+        cy.nodes().forEach(function (n) {
+          var p = n.position();
+          n.position({ x: p.y - midY, y: p.x - midX });
+        });
+        applyEdgeStyle(cy, edgeStyle);
+        cy.animate({ fit: { padding: 60 } }, { duration: 600 });
+      });
+      bfLayout.run();
+      return;
+    }
+
     if (!opts && req === "breadthfirst") {
       opts = { name: "breadthfirst", animate: true, animationDuration: 600,
-               padding: 60, spacingFactor: 1.6, directed: true, fit: true };
+               padding: 60, spacingFactor: Math.max(1.6, (mlpx + 40) / 120),
+               directed: true, fit: true };
     }
 
     if (!opts && req === "concentric") {
       opts = { name: "concentric", animate: true, animationDuration: 600,
-               padding: 60, minNodeSpacing: 60, fit: true,
+               padding: 60, minNodeSpacing: Math.max(40, mlpx - 60), fit: true,
                concentric: function (n) { return n.degree(); },
                levelWidth: function () { return 2; } };
     }
 
     if (!opts && req === "cose") {
       opts = { name: "cose", animate: true, animationDuration: 600, padding: 60,
-               nodeRepulsion: 12000, idealEdgeLength: 150, fit: true };
+               nodeRepulsion: 12000, idealEdgeLength: edgeLengthFn, fit: true };
     }
 
     // fcose（默认）或其他未知值
@@ -565,15 +674,15 @@
       opts = hasFcose
         ? { name: "fcose", quality: "proof", animate: true, animationDuration: 600,
             randomize: true, padding: 60, nodeSeparation: 140,
-            idealEdgeLength: 150, nodeRepulsion: 9000, gravity: 0.25,
+            idealEdgeLength: edgeLengthFn, nodeRepulsion: 9000, gravity: 0.25,
             fit: true, packComponents: true }
         : { name: "cose", animate: true, animationDuration: 600, padding: 60,
-            nodeRepulsion: 12000, idealEdgeLength: 150, fit: true };
+            nodeRepulsion: 12000, idealEdgeLength: edgeLengthFn, fit: true };
     }
 
     var layout = cy.layout(opts);
     layout.on("layoutstop", function () {
-      rerouteBlockedEdges(cy);
+      applyEdgeStyle(cy, edgeStyle);
       cy.animate({ fit: { padding: 60 } }, { duration: 300 });
     });
 
@@ -655,9 +764,34 @@
   }
 
   /* ---------------------------------------------------------------------------
-   * 10. 交互：点击节点高亮其邻居与相连边，点空白还原
+   * 10. 边样式：贝塞尔曲线 / 正交折线（taxi），独立于布局
    * ------------------------------------------------------------------------- */
-  function bindInteractions(cy) {
+  function applyEdgeStyle(cy, styleKey) {
+    // 先清除所有逐边样式覆盖
+    cy.edges().forEach(function(e) {
+      e.removeStyle("curve-style");
+      e.removeStyle("taxi-direction");
+      e.removeStyle("text-rotation");
+      e.removeStyle("control-point-weights");
+      e.removeStyle("control-point-distances");
+      e.removeStyle("label");
+    });
+    if (!styleKey || styleKey === "bezier") {
+      rerouteBlockedEdges(cy);
+    } else {
+      // 正交折线：标签定位在折点，必然与节点/其他标签重叠，统一隐藏
+      var dir = styleKey === "taxi-v" ? "vertical" : "horizontal";
+      cy.edges().forEach(function(e) {
+        e.style({ "curve-style": "taxi", "taxi-direction": dir,
+                  "text-rotation": "none", "label": "" });
+      });
+    }
+  }
+
+  /* ---------------------------------------------------------------------------
+   * 11. 交互：点击节点高亮其邻居与相连边，点空白还原
+   * ------------------------------------------------------------------------- */
+  function bindInteractions(cy, getEdgeStyle) {
     // 动态 <style> 注入法：CSS 规则住在 <head>，即使 html-label 插件重建 DOM 元素，
     // 浏览器也会立即对匹配 data-cm-nid 的元素重新应用，不存在 querySelector 时序问题。
     var dimStyleEl = document.createElement("style");
@@ -675,10 +809,9 @@
       var n = evt.target;
       var upstream   = n.predecessors();
       var downstream = n.successors();
-      var paths = upstream.union(downstream).union(n);
-
-      cy.elements().addClass("cm-dim").removeClass("cm-hl cm-focus cm-hl-cross");
-      upstream.union(downstream).union(n).removeClass("cm-dim").addClass("cm-hl");
+      cy.elements().addClass("cm-dim").removeClass("cm-hl cm-focus cm-hl-cross cm-hl-down");
+      upstream.union(n).removeClass("cm-dim").addClass("cm-hl");
+      downstream.removeClass("cm-dim").addClass("cm-hl-down");
 
       // 判断哪些上游边属于"纯实线路径"（双向 BFS）：
       // solidBack：从 n 反向只走非 cross 边可到达的节点（即"到 n 存在纯实线通道"）
@@ -726,12 +859,12 @@
     });
     cy.on("tap", function (evt) {
       if (evt.target === cy) {
-        cy.elements().removeClass("cm-dim cm-hl cm-focus cm-hl-cross");
+        cy.elements().removeClass("cm-dim cm-hl cm-focus cm-hl-cross cm-hl-down");
         syncHtmlOpacity();
       }
     });
     cy.on("dragfree", "node", function () {
-      rerouteBlockedEdges(cy);
+      applyEdgeStyle(cy, getEdgeStyle ? getEdgeStyle() : "bezier");
     });
   }
 
@@ -776,13 +909,14 @@
    *     用 html-to-image 截图为 PNG / SVG。节点文字是 HTML 覆盖层，
    *     cytoscape 自带的 cy.png() 无法捕获，故走 DOM 截图方案。
    * ------------------------------------------------------------------------- */
-  function bindExport(stage, ctrl, menu, layoutMenu, cy, meta, getTheme) {
+  function bindExport(stage, ctrl, menu, layoutMenu, edgeMenu, cy, meta, getTheme) {
     var btn = ctrl.querySelector("[data-act='export']");
     if (!btn || !menu) return;
 
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       if (layoutMenu) layoutMenu.classList.remove("open");
+      if (edgeMenu)   edgeMenu.classList.remove("open");
       menu.classList.toggle("open");
     });
     menu.addEventListener("click", function (e) {
@@ -795,7 +929,7 @@
     document.addEventListener("click", function () { menu.classList.remove("open"); });
   }
 
-  function bindLayout(ctrl, menu, exportMenu, initialLayout, onLayout) {
+  function bindLayout(ctrl, menu, exportMenu, edgeMenu, initialLayout, onLayout) {
     var btn = ctrl.querySelector("[data-act='layout']");
     if (!btn || !menu) return;
 
@@ -809,6 +943,7 @@
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       if (exportMenu) exportMenu.classList.remove("open");
+      if (edgeMenu)   edgeMenu.classList.remove("open");
       menu.classList.toggle("open");
     });
 
@@ -818,6 +953,37 @@
       menu.classList.remove("open");
       syncActive(name);
       onLayout(name);
+    });
+
+    document.addEventListener("click", function () { menu.classList.remove("open"); });
+  }
+
+  function bindEdge(ctrl, menu, exportMenu, layoutMenu, initialEdge, onEdge) {
+    var btn = ctrl.querySelector("[data-act='edge']");
+    if (!btn || !menu) return;
+
+    function syncActive(name) {
+      menu.querySelectorAll("button").forEach(function (b) {
+        b.classList.toggle("cm-act", b.getAttribute("data-edge") === name);
+      });
+      btn.title = name === "bezier" ? "边样式：贝塞尔曲线" :
+                  name === "taxi-h" ? "边样式：正交折线（横向）" : "边样式：正交折线（纵向）";
+    }
+    syncActive(initialEdge);
+
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (exportMenu) exportMenu.classList.remove("open");
+      if (layoutMenu) layoutMenu.classList.remove("open");
+      menu.classList.toggle("open");
+    });
+
+    menu.addEventListener("click", function (e) {
+      var name = e.target && e.target.getAttribute("data-edge");
+      if (!name) return;
+      menu.classList.remove("open");
+      syncActive(name);
+      onEdge(name);
     });
 
     document.addEventListener("click", function () { menu.classList.remove("open"); });

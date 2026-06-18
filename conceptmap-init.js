@@ -39,10 +39,28 @@
 
   // 字号常量：CSS 渲染层与 SVG 导出层共用，改这里即同步生效。
   var FONT_SIZES = {
-    keyTitle: 25, keyDesc: 15,
-    title: 25,    desc: 15,
-    edge: 20
+    keyTitle: 30, keyDesc: 15,
+    title: 30,    desc: 15,
+    edge: 30,
+    tooltip: 20
   };
+
+  /* 边的外观设置：线宽与荧光（光晕）。改这里即全局生效。
+     width 为基础边宽，交叉边按 ×1.5、高亮边按 ×1.8 比例同步加粗；
+     glow 开启后在边四周渲染一圈与边同色的光晕（cytoscape underlay 实现）。 */
+  var EDGE = {
+    width: 6,           // 基础边宽（px）
+    glow: true,         // 边荧光：是否在边周围展示同色光晕
+    glowPadding: 10,     // 荧光向外扩散的半径（px）
+    glowOpacity: 0.45   // 荧光强度（0–1，越大越亮）
+  };
+  var EDGE_CROSS_RATIO = 1.5;   // 交叉边相对基础边的宽度倍率
+  var EDGE_HL_RATIO    = 1.8;   // 高亮边相对基础边的宽度倍率
+
+  // 荧光带（underlay）的强度/范围片段；EDGE.glow 关闭时返回空对象（等同无光晕）。
+  function glowBand() {
+    return EDGE.glow ? { "underlay-padding": EDGE.glowPadding, "underlay-opacity": EDGE.glowOpacity } : {};
+  }
 
   /* 主题相关的边/标签颜色（Flexoki base 中性色系；节点卡片配色日夜共用，见 PALETTE）。
      页面其余 UI 颜色走 CSS 变量，见 injectCSS。 */
@@ -51,9 +69,9 @@
     light: { edgeLine: "#6F6E69", edgeText: "#403E3C", edgeLabelBg: "#FFFCF0", crossText: "#A02F6F", hl: "#205EA6" }
   };
 
-  function loadTheme() {
+  function loadTheme(def) {
     try { var t = localStorage.getItem("cm-theme"); if (t === "light" || t === "dark") return t; } catch (e) {}
-    return "dark";
+    return (def === "light" || def === "dark") ? def : "dark";
   }
   function saveTheme(t) { try { localStorage.setItem("cm-theme", t); } catch (e) {} }
 
@@ -189,7 +207,7 @@
       /* 描述气泡（无 html-label 扩展时的兜底，hover 显示 desc） */
       "#cm-tip{position:fixed;z-index:20;max-width:260px;pointer-events:none;",
       "  background:var(--cm-tip-bg);color:var(--cm-tip-fg);border:1px solid var(--cm-border);",
-      "  border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.5;",
+      "  border-radius:10px;padding:8px 12px;font-size:" + FONT_SIZES.tooltip + "px;line-height:1.5;",
       "  box-shadow:0 8px 28px rgba(0,0,0,.5);opacity:0;transition:opacity .12s;display:none;}",
 
       "#cm-error{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;",
@@ -236,8 +254,9 @@
       "<button data-act='in'     title='放大'>＋</button>" +
       "<button data-act='out'    title='缩小'>－</button>" +
       "<button data-act='fit'    title='适应屏幕'>⤢</button>" +
-      "<button data-act='desc'   title='隐藏描述'>≣</button>" +
-      "<button data-act='layout' title='切换布局'>⊞</button>" +
+      "<button data-act='desc'      title='隐藏描述'>≣</button>" +
+      "<button data-act='edgecolor' title='开启同色边'>╌</button>" +
+      "<button data-act='layout'    title='切换布局'>⊞</button>" +
       "<button data-act='edge'   title='边样式'>⌒</button>" +
       "<button data-act='export' title='导出图片'>⬇</button>";
     stage.appendChild(ctrl);
@@ -333,14 +352,15 @@
       }},
       { selector: "node.cm-dim", style: { "opacity": 0.25 } },
 
-      { selector: "edge", style: {
-          "width": 2,
+      { selector: "edge", style: Object.assign({
+          "width": EDGE.width,
           "line-color": t.edgeLine,
+          "underlay-color": t.edgeLine,
           "line-opacity": 0.8,
           "curve-style": "bezier",
           "target-arrow-color": t.edgeLine,
           "target-arrow-shape": "triangle",
-          "arrow-scale": 1.5,
+          "arrow-scale": 2.5,
           "label": "data(label)",
           "font-size": FONT_SIZES.edge,
           "color": t.edgeText,
@@ -350,14 +370,15 @@
           "text-background-shape": "round-rectangle",
           "text-background-padding": 3,
           "text-rotation": "autorotate"
-      }},
+      }, glowBand()) },
 
       { selector: "edge[?cross]", style: {
           "line-style": "dashed",
           "line-dash-pattern": [8, 5],
           "line-color": CROSS_COLOR,
           "target-arrow-color": CROSS_COLOR,
-          "width": 3,
+          "underlay-opacity": 0,
+          "width": EDGE.width * EDGE_CROSS_RATIO,
           "color": t.crossText,
           "z-index": 5
       }},
@@ -365,23 +386,26 @@
       { selector: "edge.cm-hl", style: {
           "line-color": t.hl,
           "target-arrow-color": t.hl,
-          "width": 3.6,
+          "underlay-color": t.hl,
+          "width": EDGE.width * EDGE_HL_RATIO,
           "line-opacity": 1,
           "z-index": 20
       }},
       { selector: "edge.cm-hl-cross", style: {
           "line-color": "#3CB371",
           "target-arrow-color": "#3CB371",
+          "underlay-color": "#3CB371",
           "color": "#3CB371",
-          "width": 3.6,
+          "width": EDGE.width * EDGE_HL_RATIO,
           "line-opacity": 1,
           "z-index": 21
       }},
       { selector: "edge.cm-hl-down", style: {
           "line-color": DOWN_COLOR,
           "target-arrow-color": DOWN_COLOR,
+          "underlay-color": DOWN_COLOR,
           "color": DOWN_COLOR,
-          "width": 3.6,
+          "width": EDGE.width * EDGE_HL_RATIO,
           "line-opacity": 1,
           "z-index": 22
       }},
@@ -433,18 +457,24 @@
       if (window.cytoscapeSvg) { cytoscape.use(window.cytoscapeSvg); }
     } catch (e) { /* 已注册或不可用 */ }
 
-    // 预先实测每个节点的卡片尺寸（文字换行后），写入 data._w / _h
+    // 预先实测每个节点的卡片尺寸（文字换行后），写入 data._w / _h / _hFull / _hMin
     (data.nodes || []).forEach(function (n) {
       if (n && n.data) {
-        var s = measureNode(n.data);
-        n.data._w = s.w;
-        n.data._h = s.h;
+        var sFull   = measureNode(n.data);
+        var origDesc = n.data.desc;
+        n.data.desc = "";
+        var sMin    = measureNode(n.data);
+        n.data.desc = origDesc;
+        n.data._w     = sFull.w;
+        n.data._h     = sFull.h;
+        n.data._hFull = sFull.h;
+        n.data._hMin  = sMin.h;
       }
     });
 
     var elements = (data.nodes || []).concat(data.edges || []);
 
-    var theme = loadTheme();
+    var theme = loadTheme(meta.theme);
 
     var cy = cytoscape({
       container: dom.cyEl,
@@ -492,6 +522,11 @@
     function setDescVisible(v) {
       showDesc = v;
       stage.classList.toggle("cm-desc-hidden", !v);
+      // 切换每个节点的高度：隐藏描述时用仅含标题的最小高度
+      cy.nodes().forEach(function(n) {
+        n.data("_h", v ? n.data("_hFull") : n.data("_hMin"));
+      });
+      cy.style().update();
       if (descBtn) {
         descBtn.textContent = v ? "≣" : "≡";
         descBtn.title       = v ? "隐藏描述" : "显示描述";
@@ -499,34 +534,74 @@
       try { localStorage.setItem("cm-desc", v ? "1" : "0"); } catch(e) {}
     }
     setDescVisible(showDesc);
-    // 按钮点击（bindControls 会对 "desc" act 直接 return，这里独立监听）
+
+    // 同色边状态
+    var sameColorEdge = (function() { try { return localStorage.getItem("cm-edgecolor") === "1"; } catch(e) { return false; } })();
+    var ecBtn = dom.ctrl.querySelector("[data-act='edgecolor']");
+    function applySameColorEdge(v) {
+      sameColorEdge = v;
+      var allTypes = Object.keys(PALETTE).filter(function(k) { return k !== "default"; });
+      cy.edges().forEach(function(e) {
+        allTypes.forEach(function(k) { e.removeClass("cm-ec-" + k); });
+        if (v && !e.data("cross")) {
+          // 按目标（下级）节点的颜色着色：既覆盖同主题内部连线，
+          // 也让每个节点“上一级路径”（父节点指向它的边）同色。
+          var tt = e.target().data("type");
+          if (tt && PALETTE[tt] && tt !== "default") e.addClass("cm-ec-" + tt);
+        }
+      });
+      cy.style().update();  // 强制刷新，确保类变化立即生效
+      if (ecBtn) {
+        ecBtn.textContent = v ? "━" : "╌";
+        ecBtn.title       = v ? "关闭同色边" : "开启同色边";
+      }
+      try { localStorage.setItem("cm-edgecolor", v ? "1" : "0"); } catch(e) {}
+    }
+    if (sameColorEdge) applySameColorEdge(true);  // 恢复持久化状态
+
+    // 按钮点击（bindControls 会对未知 act 直接 return，这里独立监听）
     dom.ctrl.addEventListener("click", function(e) {
-      if (e.target && e.target.getAttribute("data-act") === "desc") setDescVisible(!showDesc);
+      var act = e.target && e.target.getAttribute("data-act");
+      if (act === "desc")      setDescVisible(!showDesc);
+      if (act === "edgecolor") applySameColorEdge(!sameColorEdge);
     });
     // tooltip：desc 显示在卡片中时抑制；隐藏时或 fallback 模式下激活
     bindTooltip(cy, dom.tip, function() { return htmlOk && showDesc; });
 
     var themeBtn = dom.ctrl.querySelector("[data-act='theme']");
     function applyEdgeColors(t) {
-      cy.style()
+      var s = cy.style()
         .selector("node.cm-hl").style({
           "border-color": t.hl
         })
-        .selector("edge").style({
+        .selector("edge").style(Object.assign({
           "line-color": t.edgeLine, "target-arrow-color": t.edgeLine,
+          "underlay-color": t.edgeLine,
           "color": t.edgeText, "text-background-color": t.edgeLabelBg
-        })
+        }, glowBand()))
         .selector("edge[?cross]").style({
-          "line-color": CROSS_COLOR, "target-arrow-color": CROSS_COLOR, "color": t.crossText
-        })
-        .selector("edge.cm-hl").style({
-          "line-color": t.hl, "target-arrow-color": t.hl
+          "line-color": CROSS_COLOR, "target-arrow-color": CROSS_COLOR,
+          "underlay-opacity": 0, "color": t.crossText
+        });
+      // 同色边规则：在基础 edge 之后注册（盖过中性边色），在 cm-hl* 之前注册（高亮色仍可盖过它）。
+      // cytoscape 增量样式按注册顺序定优先级，故每次切主题都在此重建这一相对顺序。
+      Object.keys(PALETTE).forEach(function (k) {
+        if (k === "default") return;
+        s.selector("edge.cm-ec-" + k).style({
+          "line-color": PALETTE[k].border, "target-arrow-color": PALETTE[k].border,
+          "underlay-color": PALETTE[k].border
+        });
+      });
+      s.selector("edge.cm-hl").style({
+          "line-color": t.hl, "target-arrow-color": t.hl, "underlay-color": t.hl
         })
         .selector("edge.cm-hl-cross").style({
-          "line-color": "#3CB371", "target-arrow-color": "#3CB371", "color": "#3CB371"
+          "line-color": "#3CB371", "target-arrow-color": "#3CB371",
+          "underlay-color": "#3CB371", "color": "#3CB371"
         })
         .selector("edge.cm-hl-down").style({
-          "line-color": DOWN_COLOR, "target-arrow-color": DOWN_COLOR, "color": DOWN_COLOR
+          "line-color": DOWN_COLOR, "target-arrow-color": DOWN_COLOR,
+          "underlay-color": DOWN_COLOR, "color": DOWN_COLOR
         })
         .update();
     }
@@ -546,7 +621,7 @@
     // 固定随机种子：默认常量，可在 JSON 的 meta.seed 中覆盖
     var seed = (meta.seed != null ? meta.seed : 20240613) >>> 0;
     var currentLayout = meta.layout || "fcose";
-    var currentEdgeStyle = "bezier";
+    var currentEdgeStyle = meta.edgeStyle || "bezier";
     runLayout(cy, hasFcose, hasDagre, hasElk, seed, currentLayout, currentEdgeStyle);
     bindInteractions(cy, function() { return currentEdgeStyle; });
     bindControls(cy, dom.ctrl, function () { setTheme(theme === "dark" ? "light" : "dark"); });
@@ -595,7 +670,7 @@
   // 中文字符约 15px/字（font-size 15），两端各留 40px（节点边缘 + 箭头）。
   function edgeLengthFn(edge) {
     var lbl = (edge.data ? edge.data("label") : edge.label) || "";
-    return Math.max(160, lbl.length * 15 + 80);  // 两端各 40px 缓冲
+    return Math.max(160, lbl.length * 15 + 260);  // 两端各 40px 缓冲
   }
 
   // 图中所有边标签的最大文字像素宽度（不含布局缓冲），供层级/树形布局使用。
@@ -1118,6 +1193,8 @@
             var zoom = cy.zoom();
             var FONT = "-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',Segoe UI,sans-serif";
             var color = getComputedStyle(sample).color || "#282726";
+            // 描述是否在卡片中可见：与屏幕保持一致（“悬停才显示描述”开启时卡片不含描述）
+            var descVisible = !stage.classList.contains("cm-desc-hidden");
             var foStr = "";
             cy.nodes().forEach(function (node) {
               var d = node.data();
@@ -1132,7 +1209,7 @@
                 d,
                 (rp.x - rw / 2) * S, (rp.y - rh / 2) * S,
                 rw * S, rh * S,
-                mw, mh, zoom * S, color, FONT, isKey
+                mw, mh, zoom * S, color, FONT, isKey, descVisible
               );
             });
             svgStr = svgStr.replace(/<\/svg>\s*$/i, foStr + "</svg>");
@@ -1158,7 +1235,7 @@
   // 生成一个节点的 <foreignObject> 矢量卡片（标题 + 描述）。卡片按模型尺寸
   // (mw×mh) 排版，再用 transform:scale(sc) 缩放到目标尺寸 (fw×fh)，与
   // cy.svg 的几何对齐。样式全部内联，导出的 SVG 自包含、无需外部 CSS。
-  function svgCardFO(d, x, y, fw, fh, mw, mh, sc, color, font, isKey) {
+  function svgCardFO(d, x, y, fw, fh, mw, mh, sc, color, font, isKey, descVisible) {
     var tFont = isKey ? FONT_SIZES.keyTitle : FONT_SIZES.title;
     var dFont = isKey ? FONT_SIZES.keyDesc  : FONT_SIZES.desc;
     var wrap = "box-sizing:border-box;width:" + mw + "px;height:" + mh + "px;" +
@@ -1167,7 +1244,8 @@
       "text-align:center;padding:8px 12px;font-family:" + font + ";color:" + color + ";" +
       "overflow-wrap:break-word;word-break:break-word;";
     var title = "<div style=\"font-weight:700;line-height:1.3;font-size:" + tFont + "px\">" + esc(d.label || "") + "</div>";
-    var desc = d.desc
+    // 仅当描述在屏幕上可见时才写入，保证导出 SVG 与屏幕一致（默认可见）
+    var desc = (d.desc && descVisible !== false)
       ? "<div style=\"font-weight:400;opacity:.9;line-height:1.35;margin-top:4px;font-size:" + dFont + "px\">" + esc(d.desc) + "</div>"
       : "";
     return "<foreignObject x=\"" + x + "\" y=\"" + y + "\" width=\"" + fw + "\" height=\"" + fh + "\">" +

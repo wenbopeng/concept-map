@@ -39,9 +39,9 @@
 
   // 字号常量：CSS 渲染层与 SVG 导出层共用，改这里即同步生效。
   var FONT_SIZES = {
-    keyTitle: 20, keyDesc: 15,
-    title: 20,    desc: 15,
-    edge: 15
+    keyTitle: 25, keyDesc: 15,
+    title: 25,    desc: 15,
+    edge: 20
   };
 
   /* 主题相关的边/标签颜色（Flexoki base 中性色系；节点卡片配色日夜共用，见 PALETTE）。
@@ -184,6 +184,7 @@
       ".cm-node.cm-key .cm-d{font-size:" + FONT_SIZES.keyDesc + "px;}",
       ".cm-node .cm-t{font-size:" + FONT_SIZES.title + "px;}",
       ".cm-node .cm-d{font-size:" + FONT_SIZES.desc + "px;}",
+      "#cm-stage.cm-desc-hidden .cm-d{display:none!important;}",
 
       /* 描述气泡（无 html-label 扩展时的兜底，hover 显示 desc） */
       "#cm-tip{position:fixed;z-index:20;max-width:260px;pointer-events:none;",
@@ -235,6 +236,7 @@
       "<button data-act='in'     title='放大'>＋</button>" +
       "<button data-act='out'    title='缩小'>－</button>" +
       "<button data-act='fit'    title='适应屏幕'>⤢</button>" +
+      "<button data-act='desc'   title='隐藏描述'>≣</button>" +
       "<button data-act='layout' title='切换布局'>⊞</button>" +
       "<button data-act='edge'   title='边样式'>⌒</button>" +
       "<button data-act='export' title='导出图片'>⬇</button>";
@@ -477,13 +479,33 @@
     if (!htmlOk) {
       // 回退：显示原生标题文字 + hover 显示描述
       cy.style(buildStyle(false, THEMES[theme])).update();
-      bindTooltip(cy, dom.tip);
     }
 
     // 应用主题：只改“配色”——页面 UI 走 CSS 变量（切 class 即可），
     // 连线颜色走 cytoscape，用增量 selector 局部覆盖，绝不重建节点样式，
     // 节点卡片在日夜两种模式下都用同一套彩色渐变，保持不变。
     var stage = dom.cyEl.parentNode;            // #cm-stage
+
+    // 描述显示/隐藏状态（持久化到 localStorage）
+    var showDesc = (function() { try { return localStorage.getItem("cm-desc") !== "0"; } catch(e) { return true; } })();
+    var descBtn  = dom.ctrl.querySelector("[data-act='desc']");
+    function setDescVisible(v) {
+      showDesc = v;
+      stage.classList.toggle("cm-desc-hidden", !v);
+      if (descBtn) {
+        descBtn.textContent = v ? "≣" : "≡";
+        descBtn.title       = v ? "隐藏描述" : "显示描述";
+      }
+      try { localStorage.setItem("cm-desc", v ? "1" : "0"); } catch(e) {}
+    }
+    setDescVisible(showDesc);
+    // 按钮点击（bindControls 会对 "desc" act 直接 return，这里独立监听）
+    dom.ctrl.addEventListener("click", function(e) {
+      if (e.target && e.target.getAttribute("data-act") === "desc") setDescVisible(!showDesc);
+    });
+    // tooltip：desc 显示在卡片中时抑制；隐藏时或 fallback 模式下激活
+    bindTooltip(cy, dom.tip, function() { return htmlOk && showDesc; });
+
     var themeBtn = dom.ctrl.querySelector("[data-act='theme']");
     function applyEdgeColors(t) {
       cy.style()
@@ -868,15 +890,25 @@
     });
   }
 
-  function bindTooltip(cy, tip) {
+  function bindTooltip(cy, tip, getDescVisible) {
+    var hideTimer = null;
+
     cy.on("mouseover", "node", function (evt) {
+      if (getDescVisible && getDescVisible()) return;  // desc 在卡片中可见，无需 tooltip
       var d = evt.target.data();
       if (!d.desc) return;
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }  // 取消上一个节点的延迟隐藏
       tip.textContent = d.desc;
       tip.style.display = "block";
+      var e = evt.originalEvent;
+      if (e) {
+        tip.style.left = (e.clientX + 14) + "px";
+        tip.style.top  = (e.clientY + 14) + "px";
+      }
       requestAnimationFrame(function () { tip.style.opacity = "1"; });
     });
     cy.on("mousemove", "node", function (evt) {
+      if (getDescVisible && getDescVisible()) return;
       var e = evt.originalEvent;
       if (!e) return;
       tip.style.left = (e.clientX + 14) + "px";
@@ -884,7 +916,7 @@
     });
     cy.on("mouseout", "node", function () {
       tip.style.opacity = "0";
-      setTimeout(function () { tip.style.display = "none"; }, 150);
+      hideTimer = setTimeout(function () { tip.style.display = "none"; hideTimer = null; }, 150);
     });
   }
 

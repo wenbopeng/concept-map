@@ -57,9 +57,83 @@
   var EDGE_CROSS_RATIO = 1.5;   // 交叉边相对基础边的宽度倍率
   var EDGE_HL_RATIO    = 1.8;   // 高亮边相对基础边的宽度倍率
 
-  // 荧光带（underlay）的强度/范围片段；EDGE.glow 关闭时返回空对象（等同无光晕）。
+  // 荧光带（underlay）的强度/范围片段；关闭时显式置 0（便于运行时实时开关）。
   function glowBand() {
-    return EDGE.glow ? { "underlay-padding": EDGE.glowPadding, "underlay-opacity": EDGE.glowOpacity } : {};
+    return { "underlay-padding": EDGE.glowPadding, "underlay-opacity": EDGE.glow ? EDGE.glowOpacity : 0 };
+  }
+
+  /* ---------------------------------------------------------------------------
+   * 1b. 可调数值参数 → 设置面板（滑块）。出厂默认在任何 localStorage 覆盖前快照，
+   *     供"重置"使用。schema 描述每个参数的取值范围与生效方式。
+   * ------------------------------------------------------------------------- */
+  var FONT_DEFAULTS = Object.assign({}, FONT_SIZES);
+  var EDGE_DEFAULTS  = Object.assign({}, EDGE);
+
+  // apply 字段：nodefont=改卡片字号(需重测高度)，tooltip=改气泡字号，edge=改连线度量
+  var SETTINGS_SCHEMA = [
+    { grp: "节点字号" },
+    { obj: "font", key: "keyTitle", label: "焦点标题", min: 12, max: 48, step: 1, apply: "nodefont" },
+    { obj: "font", key: "title",    label: "节点标题", min: 12, max: 48, step: 1, apply: "nodefont" },
+    { obj: "font", key: "keyDesc",  label: "焦点描述", min: 8,  max: 32, step: 1, apply: "nodefont" },
+    { obj: "font", key: "desc",     label: "节点描述", min: 8,  max: 32, step: 1, apply: "nodefont" },
+    { grp: "其它字号" },
+    { obj: "font", key: "edge",     label: "连线标签", min: 10, max: 48, step: 1, apply: "edge" },
+    { obj: "font", key: "tooltip",  label: "悬浮提示", min: 10, max: 36, step: 1, apply: "tooltip" },
+    { grp: "连线" },
+    { obj: "edge", key: "width",       label: "边宽",     min: 1, max: 16, step: 0.5,  apply: "edge" },
+    { obj: "edge", key: "glow",        label: "荧光",     type: "toggle",              apply: "edge" },
+    { obj: "edge", key: "glowOpacity", label: "荧光强度", min: 0, max: 1,  step: 0.05, apply: "edge" },
+    { obj: "edge", key: "glowPadding", label: "荧光范围", min: 0, max: 30, step: 1,    apply: "edge" }
+  ];
+  function settingsObj(o) { return o === "edge" ? EDGE : FONT_SIZES; }
+
+  // 把持久化的参数合并进 FONT_SIZES / EDGE（须在 injectCSS / buildStyle 之前调用）
+  function loadSettings() {
+    var raw; try { raw = JSON.parse(localStorage.getItem("cm-settings") || "{}"); } catch (e) { raw = {}; }
+    if (raw && raw.font) Object.keys(raw.font).forEach(function (k) {
+      if (k in FONT_SIZES && typeof raw.font[k] === "number") FONT_SIZES[k] = raw.font[k];
+    });
+    if (raw && raw.edge) Object.keys(raw.edge).forEach(function (k) {
+      var t = typeof raw.edge[k];
+      if (k in EDGE && (t === "number" || t === "boolean")) EDGE[k] = raw.edge[k];
+    });
+  }
+  function saveSettings() {
+    try {
+      localStorage.setItem("cm-settings", JSON.stringify({
+        font: FONT_SIZES,
+        edge: { width: EDGE.width, glow: EDGE.glow, glowPadding: EDGE.glowPadding, glowOpacity: EDGE.glowOpacity }
+      }));
+    } catch (e) {}
+  }
+
+  // 卡片/气泡字号走一段动态 CSS（替换 textContent，不累积规则）；注入在主样式之后即可覆盖默认值。
+  var _fontStyleEl = null;
+  function applyFontCSS() {
+    if (!_fontStyleEl) {
+      _fontStyleEl = document.createElement("style");
+      _fontStyleEl.id = "cm-dyn-font";
+      document.head.appendChild(_fontStyleEl);
+    }
+    _fontStyleEl.textContent =
+      ".cm-node.cm-key .cm-t{font-size:" + FONT_SIZES.keyTitle + "px;}" +
+      ".cm-node.cm-key .cm-d{font-size:" + FONT_SIZES.keyDesc + "px;}" +
+      ".cm-node .cm-t{font-size:" + FONT_SIZES.title + "px;}" +
+      ".cm-node .cm-d{font-size:" + FONT_SIZES.desc + "px;}" +
+      "#cm-tip{font-size:" + FONT_SIZES.tooltip + "px;}";
+  }
+
+  // 字号变化后重测各节点卡片高度（宽度固定），并按当前"描述显隐"状态设置 _h。
+  function remeasureNodes(cy, showDesc) {
+    cy.nodes().forEach(function (n) {
+      var d = n.data();
+      var full = measureNode(d);
+      var min  = measureNode(Object.assign({}, d, { desc: "" }));
+      n.data("_w", full.w);
+      n.data("_hFull", full.h);
+      n.data("_hMin", min.h);
+      n.data("_h", showDesc ? full.h : min.h);
+    });
   }
 
   /* 主题相关的边/标签颜色（Flexoki base 中性色系；节点卡片配色日夜共用，见 PALETTE）。
@@ -191,6 +265,22 @@
       "#cm-export-menu button:hover,#cm-layout-menu button:hover,#cm-edge-menu button:hover{background:var(--cm-panel-hover);}",
       "#cm-layout-menu button.cm-act,#cm-edge-menu button.cm-act{font-weight:700;border-color:var(--cm-fg);}",
 
+      /* 参数设置面板（滑块） */
+      "#cm-settings-menu{position:fixed;bottom:66px;right:18px;z-index:11;display:none;flex-direction:column;gap:3px;",
+      "  background:var(--cm-panel-solid);backdrop-filter:blur(8px);border:1px solid var(--cm-border);border-radius:10px;",
+      "  padding:10px 12px;box-shadow:0 8px 28px rgba(0,0,0,.35);width:250px;max-height:72vh;overflow-y:auto;}",
+      "#cm-settings-menu.open{display:flex;}",
+      "#cm-settings-menu .cm-set-grp{font-size:11px;font-weight:700;opacity:.55;letter-spacing:.5px;margin:8px 0 2px;}",
+      "#cm-settings-menu .cm-set-grp:first-child{margin-top:0;}",
+      "#cm-settings-menu .cm-set-row{display:flex;align-items:center;gap:8px;height:26px;font-size:12px;color:var(--cm-fg);}",
+      "#cm-settings-menu .cm-set-row>span{flex:0 0 60px;}",
+      "#cm-settings-menu .cm-set-row input[type=range]{flex:1;min-width:0;accent-color:var(--cm-fg);cursor:pointer;}",
+      "#cm-settings-menu .cm-set-row input[type=checkbox]{margin-left:auto;width:16px;height:16px;accent-color:var(--cm-fg);cursor:pointer;}",
+      "#cm-settings-menu .cm-set-row output{flex:0 0 30px;text-align:right;font-variant-numeric:tabular-nums;opacity:.8;}",
+      "#cm-settings-menu .cm-set-reset{margin-top:9px;height:30px;border-radius:8px;cursor:pointer;background:transparent;",
+      "  color:var(--cm-fg);font-size:12px;border:1px solid var(--cm-border);transition:.15s;}",
+      "#cm-settings-menu .cm-set-reset:hover{background:var(--cm-panel-hover);}",
+
       /* HTML 节点卡片 */
       ".cm-node{box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;",
       "  align-items:center;justify-content:center;text-align:center;padding:8px 12px;",
@@ -258,6 +348,7 @@
       "<button data-act='edgecolor' title='开启同色边'>╌</button>" +
       "<button data-act='layout'    title='切换布局'>⊞</button>" +
       "<button data-act='edge'   title='边样式'>⌒</button>" +
+      "<button data-act='settings' title='参数设置'>⚙</button>" +
       "<button data-act='export' title='导出图片'>⬇</button>";
     stage.appendChild(ctrl);
 
@@ -286,8 +377,24 @@
       "<button data-edge='taxi-v'>正交折线（纵向优先）</button>";
     stage.appendChild(edgeMenu);
 
+    // 参数设置面板：由 SETTINGS_SCHEMA 生成滑块 / 开关
+    var settingsMenu = document.createElement("div"); settingsMenu.id = "cm-settings-menu";
+    settingsMenu.innerHTML = SETTINGS_SCHEMA.map(function (it) {
+      if (it.grp) return "<div class='cm-set-grp'>" + it.grp + "</div>";
+      var v = settingsObj(it.obj)[it.key];
+      var attr = "data-sobj='" + it.obj + "' data-skey='" + it.key + "' data-apply='" + it.apply + "'";
+      if (it.type === "toggle") {
+        return "<label class='cm-set-row'><span>" + it.label + "</span>" +
+          "<input type='checkbox' " + attr + (v ? " checked" : "") + "></label>";
+      }
+      return "<label class='cm-set-row'><span>" + it.label + "</span>" +
+        "<input type='range' " + attr + " min='" + it.min + "' max='" + it.max + "' step='" + it.step + "' value='" + v + "'>" +
+        "<output>" + v + "</output></label>";
+    }).join("") + "<button class='cm-set-reset' type='button'>重置为默认</button>";
+    stage.appendChild(settingsMenu);
+
     document.body.appendChild(stage);
-    return { cyEl: cy, tip: tip, ctrl: ctrl, menu: menu, layoutMenu: layoutMenu, edgeMenu: edgeMenu };
+    return { cyEl: cy, tip: tip, ctrl: ctrl, menu: menu, layoutMenu: layoutMenu, edgeMenu: edgeMenu, settingsMenu: settingsMenu };
   }
 
   function esc(s) {
@@ -360,7 +467,7 @@
           "curve-style": "bezier",
           "target-arrow-color": t.edgeLine,
           "target-arrow-shape": "triangle",
-          "arrow-scale": 2.5,
+          "arrow-scale": 2,
           "label": "data(label)",
           "font-size": FONT_SIZES.edge,
           "color": t.edgeText,
@@ -419,6 +526,7 @@
   function init() {
     var data, dom;
     try {
+      loadSettings();   // 先合并持久化的数值参数，使首帧 CSS / 样式即采用用户设定
       injectCSS();
       data = readData();
     } catch (e) {
@@ -634,6 +742,19 @@
       currentEdgeStyle = name;
       applyEdgeStyle(cy, name);
     });
+
+    // 连线度量（边宽 / 荧光 / 标签字号）实时重应用——供设置面板调用。
+    // 只设宽度/荧光/字号，不碰 line-color，故不影响同色边与高亮的配色叠放顺序。
+    function applyEdgeMetrics() {
+      cy.style()
+        .selector("edge").style(Object.assign({ "width": EDGE.width, "font-size": FONT_SIZES.edge }, glowBand()))
+        .selector("edge[?cross]").style({ "width": EDGE.width * EDGE_CROSS_RATIO, "underlay-opacity": 0 })
+        .selector("edge.cm-hl").style({ "width": EDGE.width * EDGE_HL_RATIO })
+        .selector("edge.cm-hl-cross").style({ "width": EDGE.width * EDGE_HL_RATIO })
+        .selector("edge.cm-hl-down").style({ "width": EDGE.width * EDGE_HL_RATIO })
+        .update();
+    }
+    bindSettings(dom.ctrl, dom.settingsMenu, cy, function () { return showDesc; }, applyEdgeMetrics);
 
     window.addEventListener("resize", function () { cy.resize(); });
     // 暴露给控制台调试
@@ -1024,6 +1145,7 @@
       e.stopPropagation();
       if (layoutMenu) layoutMenu.classList.remove("open");
       if (edgeMenu)   edgeMenu.classList.remove("open");
+      var _sm = document.getElementById("cm-settings-menu"); if (_sm) _sm.classList.remove("open");
       menu.classList.toggle("open");
     });
     menu.addEventListener("click", function (e) {
@@ -1051,6 +1173,7 @@
       e.stopPropagation();
       if (exportMenu) exportMenu.classList.remove("open");
       if (edgeMenu)   edgeMenu.classList.remove("open");
+      var _sm = document.getElementById("cm-settings-menu"); if (_sm) _sm.classList.remove("open");
       menu.classList.toggle("open");
     });
 
@@ -1082,6 +1205,7 @@
       e.stopPropagation();
       if (exportMenu) exportMenu.classList.remove("open");
       if (layoutMenu) layoutMenu.classList.remove("open");
+      var _sm = document.getElementById("cm-settings-menu"); if (_sm) _sm.classList.remove("open");
       menu.classList.toggle("open");
     });
 
@@ -1091,6 +1215,67 @@
       menu.classList.remove("open");
       syncActive(name);
       onEdge(name);
+    });
+
+    document.addEventListener("click", function () { menu.classList.remove("open"); });
+  }
+
+  /* 参数设置面板：滑块 / 开关实时改 FONT_SIZES、EDGE，并持久化。
+     字号变化重写动态 CSS（必要时重测卡片高度），连线变化重应用边度量。
+     拖动时用 requestAnimationFrame 合并重活，避免每个 input 事件都跑一遍。 */
+  function bindSettings(ctrl, menu, cy, getShowDesc, applyEdgeMetrics) {
+    var btn = ctrl.querySelector("[data-act='settings']");
+    if (!btn || !menu) return;
+
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      ["cm-export-menu", "cm-layout-menu", "cm-edge-menu"].forEach(function (id) {
+        var m = document.getElementById(id); if (m) m.classList.remove("open");
+      });
+      menu.classList.toggle("open");
+    });
+    menu.addEventListener("click", function (e) { e.stopPropagation(); }); // 面板内点击不关闭
+
+    var fontRaf = 0, edgeRaf = 0;
+    function scheduleNodeFont() {
+      if (fontRaf) return;
+      fontRaf = requestAnimationFrame(function () { fontRaf = 0; remeasureNodes(cy, getShowDesc()); cy.style().update(); });
+    }
+    function scheduleEdge() {
+      if (edgeRaf) return;
+      edgeRaf = requestAnimationFrame(function () { edgeRaf = 0; applyEdgeMetrics(); });
+    }
+    function applyOne(apply) {
+      if (apply === "nodefont") { applyFontCSS(); scheduleNodeFont(); }
+      else if (apply === "tooltip") { applyFontCSS(); }
+      else if (apply === "edge") { scheduleEdge(); }
+    }
+
+    menu.addEventListener("input", function (e) {
+      var t = e.target, key = t.getAttribute("data-skey");
+      if (!key) return;
+      var obj = settingsObj(t.getAttribute("data-sobj"));
+      if (t.type === "checkbox") {
+        obj[key] = t.checked;
+      } else {
+        obj[key] = parseFloat(t.value);
+        var out = t.parentNode.querySelector("output"); if (out) out.textContent = t.value;
+      }
+      applyOne(t.getAttribute("data-apply"));
+      saveSettings();
+    });
+
+    var resetBtn = menu.querySelector(".cm-set-reset");
+    if (resetBtn) resetBtn.addEventListener("click", function () {
+      Object.keys(FONT_DEFAULTS).forEach(function (k) { FONT_SIZES[k] = FONT_DEFAULTS[k]; });
+      Object.keys(EDGE_DEFAULTS).forEach(function (k) { EDGE[k] = EDGE_DEFAULTS[k]; });
+      menu.querySelectorAll("input[data-skey]").forEach(function (inp) {
+        var v = settingsObj(inp.getAttribute("data-sobj"))[inp.getAttribute("data-skey")];
+        if (inp.type === "checkbox") { inp.checked = !!v; }
+        else { inp.value = v; var o = inp.parentNode.querySelector("output"); if (o) o.textContent = v; }
+      });
+      applyFontCSS(); remeasureNodes(cy, getShowDesc()); cy.style().update(); applyEdgeMetrics();
+      saveSettings();
     });
 
     document.addEventListener("click", function () { menu.classList.remove("open"); });

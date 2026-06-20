@@ -34,7 +34,6 @@
   };
   function pal(type) { return PALETTE[type] || PALETTE.default; }
 
-  var CROSS_COLOR = "#B74583";        // 交叉连接线（Flexoki magenta-500，日夜通用）
   var DOWN_COLOR  = "#1098AD";        // 后代路径高亮色（青色，日夜通用）
 
   // 字号常量：CSS 渲染层与 SVG 导出层共用，改这里即同步生效。
@@ -49,9 +48,9 @@
      width 为基础边宽，交叉边按 ×1.5、高亮边按 ×1.8 比例同步加粗；
      glow 开启后在边四周渲染一圈与边同色的光晕（cytoscape underlay 实现）。 */
   var EDGE = {
-    width: 6,           // 基础边宽（px）
+    width: 4,           // 基础边宽（px）
     glow: true,         // 边荧光：是否在边周围展示同色光晕
-    glowPadding: 10,     // 荧光向外扩散的半径（px）
+    glowPadding: 6,     // 荧光向外扩散的半径（px）
     glowOpacity: 0.45   // 荧光强度（0–1，越大越亮）
   };
   var EDGE_CROSS_RATIO = 1.5;   // 交叉边相对基础边的宽度倍率
@@ -61,7 +60,6 @@
   function glowBand() {
     return { "underlay-padding": EDGE.glowPadding, "underlay-opacity": EDGE.glow ? EDGE.glowOpacity : 0 };
   }
-
   /* ---------------------------------------------------------------------------
    * 1b. 可调数值参数 → 设置面板（滑块）。出厂默认在任何 localStorage 覆盖前快照，
    *     供"重置"使用。schema 描述每个参数的取值范围与生效方式。
@@ -139,8 +137,8 @@
   /* 主题相关的边/标签颜色（Flexoki base 中性色系；节点卡片配色日夜共用，见 PALETTE）。
      页面其余 UI 颜色走 CSS 变量，见 injectCSS。 */
   var THEMES = {
-    dark:  { edgeLine: "#878580", edgeText: "#CECDC3", edgeLabelBg: "#1C1B1A", crossText: "#F9B9CF", hl: "#DFB431" },
-    light: { edgeLine: "#6F6E69", edgeText: "#403E3C", edgeLabelBg: "#FFFCF0", crossText: "#A02F6F", hl: "#205EA6" }
+    dark:  { edgeLine: "#878580", edgeText: "#CECDC3", edgeLabelBg: "#1C1B1A", hl: "#DFB431" },
+    light: { edgeLine: "#6F6E69", edgeText: "#403E3C", edgeLabelBg: "#FFFCF0", hl: "#205EA6" }
   };
 
   function loadTheme(def) {
@@ -301,7 +299,18 @@
       "  box-shadow:0 8px 28px rgba(0,0,0,.5);opacity:0;transition:opacity .12s;display:none;}",
 
       "#cm-error{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;",
-      "  color:#ff9a9a;font-size:15px;text-align:center;padding:40px;line-height:1.7;}"
+      "  color:#ff9a9a;font-size:15px;text-align:center;padding:40px;line-height:1.7;}",
+
+      /* 布局种子显示 */
+      "#cm-seed{position:fixed;bottom:18px;left:18px;z-index:10;display:flex;align-items:center;gap:10px;",
+      "  background:var(--cm-panel-solid);border:1px solid var(--cm-border);border-radius:10px;",
+      "  padding:6px 10px 6px 14px;backdrop-filter:blur(8px);color:var(--cm-fg);}",
+      "#cm-seed .cm-seed-lbl{opacity:.5;font-size:11px;font-weight:700;letter-spacing:.4px;white-space:nowrap;}",
+      "#cm-seed-val{font-size:13px;font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:.5px;min-width:88px;}",
+      "#cm-seed button{height:26px;padding:0 10px;border-radius:7px;cursor:pointer;",
+      "  background:transparent;color:var(--cm-fg);font-size:12px;line-height:1;white-space:nowrap;",
+      "  border:1px solid var(--cm-border);transition:.15s;}",
+      "#cm-seed button:hover{background:var(--cm-panel-hover);}"
     ].join("\n");
     var st = document.createElement("style");
     st.textContent = css;
@@ -345,6 +354,7 @@
       "<button data-act='out'    title='缩小'>－</button>" +
       "<button data-act='fit'    title='适应屏幕'>⤢</button>" +
       "<button data-act='desc'      title='隐藏描述'>≣</button>" +
+      "<button data-act='edgelabel' title='隐藏边标签'>≋</button>" +
       "<button data-act='edgecolor' title='开启同色边'>╌</button>" +
       "<button data-act='layout'    title='切换布局'>⊞</button>" +
       "<button data-act='edge'   title='边样式'>⌒</button>" +
@@ -392,6 +402,12 @@
         "<output>" + v + "</output></label>";
     }).join("") + "<button class='cm-set-reset' type='button'>重置为默认</button>";
     stage.appendChild(settingsMenu);
+
+    var seedDisplay = document.createElement("div"); seedDisplay.id = "cm-seed";
+    seedDisplay.innerHTML = "<span class='cm-seed-lbl'>布局种子</span>" +
+      "<span id='cm-seed-val'>—</span>" +
+      "<button id='cm-seed-copy' title='复制种子，可粘贴到 meta.seed 字段以复现此布局'>复制</button>";
+    stage.appendChild(seedDisplay);
 
     document.body.appendChild(stage);
     return { cyEl: cy, tip: tip, ctrl: ctrl, menu: menu, layoutMenu: layoutMenu, edgeMenu: edgeMenu, settingsMenu: settingsMenu };
@@ -482,11 +498,11 @@
       { selector: "edge[?cross]", style: {
           "line-style": "dashed",
           "line-dash-pattern": [8, 5],
-          "line-color": CROSS_COLOR,
-          "target-arrow-color": CROSS_COLOR,
+          "line-color": t.edgeLine,
+          "target-arrow-color": t.edgeLine,
           "underlay-opacity": 0,
           "width": EDGE.width * EDGE_CROSS_RATIO,
-          "color": t.crossText,
+          "color": t.edgeText,
           "z-index": 5
       }},
 
@@ -516,7 +532,8 @@
           "line-opacity": 1,
           "z-index": 22
       }},
-      { selector: "edge.cm-dim", style: { "opacity": 0.12 } }
+      { selector: "edge.cm-dim", style: { "opacity": 0.12 } },
+      { selector: "edge.cm-el-hide", style: { "label": "" } }
     ];
   }
 
@@ -667,14 +684,31 @@
     }
     if (sameColorEdge) applySameColorEdge(true);  // 恢复持久化状态
 
+    // 边标签显示/隐藏状态
+    var showEdgeLabel = (function() { try { return localStorage.getItem("cm-edgelabel") !== "0"; } catch(e) { return true; } })();
+    var edgeLabelBtn  = dom.ctrl.querySelector("[data-act='edgelabel']");
+    function setEdgeLabelVisible(v) {
+      showEdgeLabel = v;
+      if (v) { cy.edges().removeClass("cm-el-hide"); }
+      else   { cy.edges().addClass("cm-el-hide"); }
+      cy.style().update();
+      if (edgeLabelBtn) {
+        edgeLabelBtn.textContent = v ? "≋" : "═";
+        edgeLabelBtn.title       = v ? "隐藏边标签" : "显示边标签";
+      }
+      try { localStorage.setItem("cm-edgelabel", v ? "1" : "0"); } catch(e) {}
+    }
+    setEdgeLabelVisible(showEdgeLabel);
+
     // 按钮点击（bindControls 会对未知 act 直接 return，这里独立监听）
     dom.ctrl.addEventListener("click", function(e) {
       var act = e.target && e.target.getAttribute("data-act");
       if (act === "desc")      setDescVisible(!showDesc);
+      if (act === "edgelabel") setEdgeLabelVisible(!showEdgeLabel);
       if (act === "edgecolor") applySameColorEdge(!sameColorEdge);
     });
-    // tooltip：desc 显示在卡片中时抑制；隐藏时或 fallback 模式下激活
-    bindTooltip(cy, dom.tip, function() { return htmlOk && showDesc; });
+    // tooltip：节点 desc 在卡片中可见时抑制节点提示；边标签可见时抑制边提示
+    bindTooltip(cy, dom.tip, function() { return htmlOk && showDesc; }, function() { return showEdgeLabel; });
 
     var themeBtn = dom.ctrl.querySelector("[data-act='theme']");
     function applyEdgeColors(t) {
@@ -688,8 +722,8 @@
           "color": t.edgeText, "text-background-color": t.edgeLabelBg
         }, glowBand()))
         .selector("edge[?cross]").style({
-          "line-color": CROSS_COLOR, "target-arrow-color": CROSS_COLOR,
-          "underlay-opacity": 0, "color": t.crossText
+          "line-color": t.edgeLine, "target-arrow-color": t.edgeLine,
+          "underlay-opacity": 0, "color": t.edgeText
         });
       // 同色边规则：在基础 edge 之后注册（盖过中性边色），在 cm-hl* 之前注册（高亮色仍可盖过它）。
       // cytoscape 增量样式按注册顺序定优先级，故每次切主题都在此重建这一相对顺序。
@@ -726,17 +760,42 @@
     }
     setTheme(theme);
 
-    // 固定随机种子：默认常量，可在 JSON 的 meta.seed 中覆盖
-    var seed = (meta.seed != null ? meta.seed : 20240613) >>> 0;
+    // meta.seed 指定时传固定值，否则传 null（runLayout 内每次自行随机）
+    var seed = meta.seed != null ? meta.seed >>> 0 : null;
     var currentLayout = meta.layout || "fcose";
     var currentEdgeStyle = meta.edgeStyle || "bezier";
-    runLayout(cy, hasFcose, hasDagre, hasElk, seed, currentLayout, currentEdgeStyle);
+
+    // 种子展示与复制
+    var seedValEl  = document.getElementById("cm-seed-val");
+    var seedCopyBtn = document.getElementById("cm-seed-copy");
+    function onSeedUsed(s) {
+      if (seedValEl) seedValEl.textContent = s;
+    }
+    if (seedCopyBtn) {
+      seedCopyBtn.addEventListener("click", function () {
+        var txt = seedValEl ? seedValEl.textContent : "";
+        if (!txt || txt === "—") return;
+        var restore = function () { setTimeout(function () { seedCopyBtn.textContent = "复制"; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(function () {
+            seedCopyBtn.textContent = "已复制!"; restore();
+          }).catch(function () { seedCopyBtn.textContent = "失败"; restore(); });
+        } else {
+          var ta = document.createElement("textarea");
+          ta.value = txt; document.body.appendChild(ta); ta.select();
+          try { document.execCommand("copy"); seedCopyBtn.textContent = "已复制!"; } catch (e) { seedCopyBtn.textContent = "失败"; }
+          document.body.removeChild(ta); restore();
+        }
+      });
+    }
+
+    runLayout(cy, hasFcose, hasDagre, hasElk, seed, currentLayout, currentEdgeStyle, onSeedUsed);
     bindInteractions(cy, function() { return currentEdgeStyle; });
     bindControls(cy, dom.ctrl, function () { setTheme(theme === "dark" ? "light" : "dark"); });
     bindExport(stage, dom.ctrl, dom.menu, dom.layoutMenu, dom.edgeMenu, cy, meta, function () { return theme; });
     bindLayout(dom.ctrl, dom.layoutMenu, dom.menu, dom.edgeMenu, currentLayout, function (name) {
       currentLayout = name;
-      runLayout(cy, hasFcose, hasDagre, hasElk, seed, name, currentEdgeStyle);
+      runLayout(cy, hasFcose, hasDagre, hasElk, seed, name, currentEdgeStyle, onSeedUsed);
     });
     bindEdge(dom.ctrl, dom.edgeMenu, dom.menu, dom.layoutMenu, currentEdgeStyle, function (name) {
       currentEdgeStyle = name;
@@ -804,9 +863,12 @@
     return max;
   }
 
-  function runLayout(cy, hasFcose, hasDagre, hasElk, seed, layoutName, edgeStyle) {
+  function runLayout(cy, hasFcose, hasDagre, hasElk, seed, layoutName, edgeStyle, onSeed) {
     var req = layoutName || "fcose";
     var opts;
+    // seed 为 null 时每次调用随机生成，不为 null 时使用固定值（可复现）
+    var effectiveSeed = seed != null ? seed >>> 0 : (Math.random() * 0x100000000 >>> 0);
+    if (onSeed) onSeed(effectiveSeed);
 
     // 层级/树形布局用纯文字宽度 + 小缓冲；力导布局用 edgeLengthFn（含自身缓冲）。
     var mlpx = maxLabelPx(cy);
@@ -846,7 +908,7 @@
       } else {
         console.warn("[conceptmap] elk 未加载，降级为 dagre/fcose");
         req = hasDagre ? (req === "elk-lr" ? "dagre-lr" : "dagre-tb") : "fcose";
-        runLayout(cy, hasFcose, hasDagre, false, seed, req, edgeStyle);
+        runLayout(cy, hasFcose, hasDagre, false, seed, req, edgeStyle, onSeed);
         return;
       }
     }
@@ -865,7 +927,10 @@
         applyEdgeStyle(cy, edgeStyle);
         cy.animate({ fit: { padding: 60 } }, { duration: 600 });
       });
-      bfLayout.run();
+      var origRandom2 = Math.random;
+      Math.random = makeRng(effectiveSeed);
+      try { bfLayout.run(); }
+      finally { Math.random = origRandom2; }
       return;
     }
 
@@ -907,7 +972,7 @@
     // 布局计算在 run() 内同步完成（随机数也在此期间消费），
     // 用 try/finally 把 Math.random 的替换严格限制在这段窗口内。
     var origRandom = Math.random;
-    Math.random = makeRng(seed >>> 0);
+    Math.random = makeRng(effectiveSeed);
     try { layout.run(); }
     finally { Math.random = origRandom; }
   }
@@ -1086,15 +1151,12 @@
     });
   }
 
-  function bindTooltip(cy, tip, getDescVisible) {
+  function bindTooltip(cy, tip, getDescVisible, getEdgeLabelVisible) {
     var hideTimer = null;
 
-    cy.on("mouseover", "node", function (evt) {
-      if (getDescVisible && getDescVisible()) return;  // desc 在卡片中可见，无需 tooltip
-      var d = evt.target.data();
-      if (!d.desc) return;
-      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }  // 取消上一个节点的延迟隐藏
-      tip.textContent = d.desc;
+    function showTip(content, evt) {
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      tip.textContent = content;
       tip.style.display = "block";
       var e = evt.originalEvent;
       if (e) {
@@ -1102,18 +1164,38 @@
         tip.style.top  = (e.clientY + 14) + "px";
       }
       requestAnimationFrame(function () { tip.style.opacity = "1"; });
+    }
+    function moveTip(evt) {
+      var e = evt.originalEvent; if (!e) return;
+      tip.style.left = (e.clientX + 14) + "px";
+      tip.style.top  = (e.clientY + 14) + "px";
+    }
+    function hideTip() {
+      tip.style.opacity = "0";
+      hideTimer = setTimeout(function () { tip.style.display = "none"; hideTimer = null; }, 150);
+    }
+
+    cy.on("mouseover", "node", function (evt) {
+      if (getDescVisible && getDescVisible()) return;
+      var d = evt.target.data(); if (!d.desc) return;
+      showTip(d.desc, evt);
     });
     cy.on("mousemove", "node", function (evt) {
       if (getDescVisible && getDescVisible()) return;
-      var e = evt.originalEvent;
-      if (!e) return;
-      tip.style.left = (e.clientX + 14) + "px";
-      tip.style.top  = (e.clientY + 14) + "px";
+      moveTip(evt);
     });
-    cy.on("mouseout", "node", function () {
-      tip.style.opacity = "0";
-      hideTimer = setTimeout(function () { tip.style.display = "none"; hideTimer = null; }, 150);
+    cy.on("mouseout", "node", hideTip);
+
+    cy.on("mouseover", "edge", function (evt) {
+      if (getEdgeLabelVisible && getEdgeLabelVisible()) return;
+      var label = evt.target.data("label"); if (!label) return;
+      showTip(label, evt);
     });
+    cy.on("mousemove", "edge", function (evt) {
+      if (getEdgeLabelVisible && getEdgeLabelVisible()) return;
+      moveTip(evt);
+    });
+    cy.on("mouseout", "edge", hideTip);
   }
 
   /* ---------------------------------------------------------------------------
